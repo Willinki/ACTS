@@ -44,3 +44,5 @@ So we can implement ACTS as a function like:
     ...
     return indices_to_be_queried
 ```
+
+Where classifier is defined during the definition of the ALmanager and must be ```python sklearn.neighbors.NearestNeighbors```.
