@@ -67,3 +67,5 @@ The steps of the algorithm are the following:
 * Calculate uncertainty for each TS 
 * Calculate question informativeness
 * Return the most informative examples
+
+It is not the best solution, maybe building a callable class might have been better. But this solution is a bit simpler and does not require large modifications of the code in VA_BUILDER, except for the ```select_query_strategy``` function.
