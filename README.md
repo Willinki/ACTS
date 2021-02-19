@@ -62,7 +62,7 @@ A few problems have emerged, they have a quick solution luckilly:
 
 The steps of the algorithm are the following:
 
-* Initialize/update steps
+* Initialize/update patterns
 * Calculate utility for each TS
 * Calculate uncertainty for each TS 
 * Calculate question informativeness
