@@ -92,7 +92,7 @@ def ACTS(classifier: BaseEstimator, X: modALinput,
     #                 are passed with "partial()"
     # PROBLEM n° 3: patterns might be a static variable (stored even when they are 
     #               out of scope)
-    # ----> SOLUTION: 
+    # ----> SOLUTION (thanks StackOverflow): 
     try:
         ACTS.patterns = _update_patterns(ACTS.patterns, DL)
     except AttributeError:
