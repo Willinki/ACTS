@@ -26,7 +26,7 @@ Then when querying:
 ```python
 def query(X_pool, **query_kwargs):
   ...
-  query_strategy = partial(alm.query_strategy, alm.estimator)
+  query_strategy = select_query_strategy(alm)
   query_idx = query_strategy(X_pool, **query_args)
   query_idx = pool_indices[query_idx]
   self._set_query_list(query_idx)
@@ -46,3 +46,24 @@ So we can implement ACTS as a function like:
 ```
 
 Where classifier is defined during the definition of the ALmanager and must be ```sklearn.neighbors.KNeighborsClassifier```.
+
+#### NOTES ABOUT THE IMPLEMENTATION
+I sketched the general structure of the ACTS algorithm in the file, highlighting the necessary steps.
+
+I based the structure of the function on the ```uncertainty_sampling``` of the library ```modAL```, adding a few things 
+(DL and L as arguments).
+
+A few problems have emerged, they have a quick solution luckilly:
+
+* The query strategy needs two additional arguments than uncertanty sampling: the labelled data, which i called DL and their labels L.
+  To make this work, the function ```va_builder.utils.alutils.select_query_strategy``` needs to be modified by adding an additional ```elif```
+* The patterns must be stored even after the acts has run, since they need to be updated everytime. I gave a simple solution to the problem.
+* What is a pattern I still don't know... maybe it is necessary to build an object. we'll see.
+
+The steps of the algorithm are the following:
+
+* Initialize/update steps
+* Calculate utility for each TS
+* Calculate uncertainty for each TS 
+* Calculate question informativeness
+* Return the most informative examples

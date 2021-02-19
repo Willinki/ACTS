@@ -47,7 +47,17 @@ def _multi_argmax(values: np.ndarray, n_instances: int = 1) -> np.ndarray:
     max_idx = np.argpartition(-values, n_instances-1, axis=0)[:n_instances]
     return max_idx
 
+def _initialize_patterns(DL):
+    print("Yup... This initializes the patterns")
+
+def _update_patterns(Opatterns, DL):
+    print("What? Patterns already initialized? Let's update then")
+    
+
 def ACTS(classifier: BaseEstimator, X: modALinput,
+         # HERE I'LL ADD THE ADDITIONAL REQUIREMENTS
+         DL: modALinput, L: np.ndarray, 
+         # THESE ELEMENTS ARE HERE BY DEFAULT
          n_instances: int = 1, random_tie_break: bool = False,
          **uncertainty_measure_kwargs) -> np.ndarray :
     """
@@ -55,6 +65,8 @@ def ACTS(classifier: BaseEstimator, X: modALinput,
     Args:
         classifier: The classifier for which the labels are to be queried.
         X: The pool of samples to query from.
+        DL: The labelled data
+        L: The labels of DL
         n_instances: Number of samples to be queried.
         random_tie_break: If True, shuffles utility scores to randomize the order. This
             can be used to break the tie when the highest utility score is not unique.
@@ -71,6 +83,27 @@ def ACTS(classifier: BaseEstimator, X: modALinput,
     #           CALCULATES the question informativeness for each element in X
     #
     #
+    # PROBLEM N° 1: the algorithm needs also the labelled examples
+    #               They must be passed as the uncertainty_measure_kwargs
+    #               during the query part
+    # PROBLEM N° 2: it also needs the set of possible labels, same for problem 1
+    # ----> SOLUTION: in utils.alutils.select_query_strategy it is possible to add 
+    #                 another condition where if ACTS is used, all the requirements 
+    #                 are passed with "partial()"
+    # PROBLEM n° 3: patterns might be a static variable (stored even when they are 
+    #               out of scope)
+    # ----> SOLUTION: 
+    try:
+        ACTS.patterns = _update_patterns(ACTS.patterns, DL)
+    except AttributeError:
+        ACTS.patterns = _initialize_patterns(DL)
+    # 
+    # STEPS:
+    #        initialize/update patterns (above)
+    #        compute utility
+    #        compute uncertainty
+    #        if uncertainty = 0, add the series to the labelled set (is it possible?)[maybe leave it as last...]
+    #        calculate Q_informativeness 
     if not random_tie_break:
         return _multi_argmax(Q_informativeness, n_instances=n_instances)
 
