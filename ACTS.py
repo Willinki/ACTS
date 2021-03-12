@@ -5,6 +5,7 @@ import numpy as np
 from modAL.utils.data import modALinput 
 from sklearn.base import BaseEstimator
 
+
 def _shuffled_argmax(values: np.ndarray, n_instances: int = 1) -> np.ndarray:
     """
     Taken for modAL.utils
