@@ -48,12 +48,24 @@ def _multi_argmax(values: np.ndarray, n_instances: int = 1) -> np.ndarray:
     max_idx = np.argpartition(-values, n_instances-1, axis=0)[:n_instances]
     return max_idx
 
+
 def _initialize_patterns(DL):
     print("Yup... This initializes the patterns")
+
 
 def _update_patterns(Opatterns, DL):
     print("What? Patterns already initialized? Let's update then")
     
+# SHOULD RETURN UNCERTAINTY VALUE
+def compute_uncertainty(DL, X, L, k):
+    # uncertainty =
+
+    # return uncertainty
+
+def compute_utility(DU, n, S):
+    # COMPUTE UTILITY HERE
+
+
 
 def ACTS(classifier: BaseEstimator, X: modALinput,
          # HERE I'LL ADD THE ADDITIONAL REQUIREMENTS
@@ -78,7 +90,7 @@ def ACTS(classifier: BaseEstimator, X: modALinput,
         the instances from X chosen to be labelled.
     """
     #
-    #actual algorithm
+    # actual algorithm
     #
     #
     #           CALCULATES the question informativeness for each element in X
