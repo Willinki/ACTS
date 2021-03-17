@@ -81,7 +81,7 @@ class ACTS:
             cols : key, ts, inst_keys, labels, l_probas
             
         - instances : pd.Dataframe
-            cols : key, ts, label, near_pt, pt_probas
+            cols : key, ts, label, near_pt
     """
     def __init__(self):
         self.patterns = None
@@ -103,7 +103,7 @@ class ACTS:
             - DL: The instances of labelled data
             - L: The labels of DL
             - Li: Indices of labelled instances
-            - n_instances: Number of samples to be queried.
+            - n_instances: Number of samples to be returned.
             - random_tie_break: If True, shuffles utility scores to randomize the order. This
                 can be used to break the tie when the highest utility score is not unique.
             - **uncertainty_measure_kwargs: Keyword arguments to be passed for the uncertainty
@@ -113,6 +113,7 @@ class ACTS:
         -------
             The indices of the instances from X chosen to be labelled;
         """
+        # MAINTAINING PATTERNS
         if self.patterns is None:
             self._initialize_instances(DL, L, Li)
             self._initialize_patterns()
@@ -124,9 +125,10 @@ class ACTS:
             self._update_patterns()
             self._assign_instances(empty_only=False)
             self._assign_patterns()
-        self.update_pt_probas()
-        self.update_l_probas()
-         
+        # MODELING
+        self._update_l_probas()
+        lam = self._calculate_lambda(X)
+        # QUESTION SELECTION
         # STEPS:
         #        compute utility
         #        compute uncertainty
@@ -177,13 +179,21 @@ class ACTS:
         """For each pattern, check if mixed, 
            if yes, split (delete old pattern, add 2 new ones)
         """
-    
 
-    def update_pt_probas(self) -> None:
-        """For each instance, calculate P(X | pt) for each pt
+        
+    def _calculate_lambda(self, X):
+        """Calculates the value of lambda (MLE), used in P(X | pt)
+        
+        Args : see __call__
+        """
+
+
+    @staticmethod
+    def _pt_proba(X : np.array, pt : np.array, lam : float) -> float:
+        """Given instance and pattern, calculates P(X | pt)
         """
 
     
-    def update_l_probas(self) -> None:
+    def _update_l_probas(self) -> None:
         """For each pt, calculate P(pt | ell) for each ell
         """
