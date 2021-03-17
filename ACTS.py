@@ -1,11 +1,11 @@
 """
 Implementation of the ACTS algorithm as a query strategy for the va_builder framework.
+For any additional information see documentation.
 """
 import pandas as pd
 import numpy as np
 from modAL.utils.data import modALinput 
 from sklearn.base import BaseEstimator
-
 
 def _shuffled_argmax(values: np.ndarray, n_instances: int = 1) -> np.ndarray:
     """
@@ -49,9 +49,11 @@ def _multi_argmax(values: np.ndarray, n_instances: int = 1) -> np.ndarray:
     max_idx = np.argpartition(-values, n_instances-1, axis=0)[:n_instances]
     return max_idx
 
+
 def k(X : np.array) -> int:
     """
     Extracts key from sequence of values.
+    Used to assign a key to patterns.
     """
     return hash(
         round(np.mean(X), 6)
@@ -64,59 +66,124 @@ def compute_uncertainty(DL, X, L, k):
     return 
     # return uncertainty
 
+
 def compute_utility(DU, n, S):
     # COMPUTE UTILITY HERE
     return
 
+
 class ACTS:
-    """Wrapper class for ACTS query strategy
+    """Wrapper class for ACTS query strategy. 
+    
+    Properties
+    ----------
+        - patterns: pd.DataFrame
+            cols : key, ts, inst_keys, labels, l_probas
+            
+        - instances : pd.Dataframe
+            cols : key, ts, label, near_pt, pt_probas
     """
     def __init__(self):
         self.patterns = None
-        self.instances = pd.DataFrame({
-            
-        })
+        self.instances = None
         
-    def __call__(self, classifier: BaseEstimator, X: modALinput,
-            DL: modALinput, L: np.ndarray, 
-            n_instances: int = 1, random_tie_break: bool = False,
-            **uncertainty_measure_kwargs) -> np.ndarray :
-        """
-        Sampling based on the measures defined by ACTS.
-        Args:
-            classifier: The classifier for which the labels are to be queried.
-            X: The pool of samples to query from.
-            DL: The labelled data
-            L: The labels of DL
-            n_instances: Number of samples to be queried.
-            random_tie_break: If True, shuffles utility scores to randomize the order. This
+
+    def __call__(self, X: modALinput,
+                 DL: modALinput, 
+                 L: np.ndarray, 
+                 Li: np.ndarray, 
+                 n_instances: int = 1, 
+                 random_tie_break: bool = False,
+                 **uncertainty_measure_kwargs) -> np.ndarray :
+        """Sampling based on the measures defined by ACTS.
+        
+        Args
+        ----
+            - X : The pool of samples to query from.
+            - DL: The instances of labelled data
+            - L: The labels of DL
+            - Li: Indices of labelled instances
+            - n_instances: Number of samples to be queried.
+            - random_tie_break: If True, shuffles utility scores to randomize the order. This
                 can be used to break the tie when the highest utility score is not unique.
-            **uncertainty_measure_kwargs: Keyword arguments to be passed for the uncertainty
+            - **uncertainty_measure_kwargs: Keyword arguments to be passed for the uncertainty
                 measure function.
-        Returns:
+                
+        Returns
+        -------
             The indices of the instances from X chosen to be labelled;
-            The instances from X chosen to be labelled.
         """
         if self.patterns is None:
-            self.patterns = self._initialize_patterns(DL)
+            self._initialize_instances(DL, L, Li)
+            self._initialize_patterns()
+            self._assign_instances(empty_only=False)
         else:
-            self.patterns = self._update_patterns(DL)
-        # 
+            self._update_instances(DL, L, Li)
+            self._assign_instances(empty_only=True)
+            self._assign_patterns()
+            self._update_patterns()
+            self._assign_instances(empty_only=False)
+            self._assign_patterns()
+        self.update_pt_probas()
+        self.update_l_probas()
+         
         # STEPS:
-        #        initialize/update patterns (above)
         #        compute utility
         #        compute uncertainty
         #        if uncertainty = 0, add the series to the labelled set (is it possible?)[maybe leave it as last...]
         #        calculate Q_informativeness 
+
         if not random_tie_break:
             return _multi_argmax(Q_informativeness, n_instances=n_instances)
 
         return _shuffled_argmax(Q_informativeness, n_instances=n_instances)
 
     
-    def _initialize_patterns(DL):
-        print("Yup... This initializes the patterns")
+    def _initialize_instances(self, DL, L, Li) -> None:
+        """For each element in DL, L, Li add instance
+        
+        Args : see __call__
+        """
 
 
-    def _update_patterns(Opatterns, DL):
-        print("What? Patterns already initialized? Let's update then")
+    def _initialize_patterns(self) -> None:
+        """For each instance, add pattern
+        """
+
+
+    def _update_instances(self, DL, L, Li) -> None:
+        """For each element in DL, check if exists in instances
+           if not, add
+        
+        Args : see __call__
+        """
+
+
+    def _assign_instances(self, empty_only : bool) -> None:
+        """For each instance, update near_pt
+        
+        Args : 
+            empty_only : (bool) if true, only instances with n_pt = None are
+                updated 
+        """
+
+
+    def _assign_patterns(self) -> None:
+        """For each pattern, update inst_keys, labels
+        """
+        
+
+    def _update_patterns(self) -> None:
+        """For each pattern, check if mixed, 
+           if yes, split (delete old pattern, add 2 new ones)
+        """
+    
+
+    def update_pt_probas(self) -> None:
+        """For each instance, calculate P(X | pt) for each pt
+        """
+
+    
+    def update_l_probas(self) -> None:
+        """For each pt, calculate P(pt | ell) for each ell
+        """
