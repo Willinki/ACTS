@@ -105,17 +105,6 @@ Here a general schema of the first part of ACTS is given:
     \end{itemize}
     For now, we'll use the last method. If everything is good, the best option is fast-shapelets. (Boy it'll be fun).
     \item After splitting the patterns, reassign each instance to its nearest pattern.
-    \item Now, given each instance $X$, and each pattern $pt$ we have to calculate the following quantity:
-    \begin{equation}
-        P(X | pt) = \exp(-\lambda D(X, pt))
-        \label{eq:pxpt}
-    \end{equation}
-    Where $D$ is the minimum distance obtained with a \textit{sliding window} and $\lambda$ is the real positive 
-    number for which the following equation holds:
-    \begin{equation}
-        \lambda \hat{Dis}(X, pt) = 1
-    \end{equation}
-    Where we used the mean of $Dis$.
     \item After this, we have to calculate the following quantity for each pattern $pt$ and each label $\ell$:
     \begin{equation}
         P(pt | \ell) = Multi(p_1, \dots, p_L)
