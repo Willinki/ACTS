@@ -105,7 +105,7 @@ Here a general schema of the first part of ACTS is given:
     \end{itemize}
     For now, we'll use the last method. If everything is good, the best option is fast-shapelets. (Boy it'll be fun).
     \item After splitting the patterns, reassign each instance to its nearest pattern.
-    \item After this, we have to calculate the following quantity for each pattern $pt$ and each label $\ell$:
+    \item After this, we have to calculate the following quantity for each label $\ell$:
     \begin{equation}
         P(pt | \ell) = Multi(p_1, \dots, p_L)
     \end{equation}
@@ -130,7 +130,6 @@ the instances, the columns are the following:
     \item \texttt{ts} is the actual time series (np.array).
     \item \texttt{label} is the label of the instance (int).
     \item \texttt{near\_pt} is the key of the nearest pattern
-    \item \texttt{pt\_probas} is an array containing $P(X | pt)$ for each $pt$.
 \end{itemize}
 
 \paragraph{Patterns}
@@ -156,9 +155,14 @@ Now that the key is defined, we define other fields.
     Basically earlier we assigned each instance to its nearest pattern. Here we collect all the
     instances with a certain pattern as nearest.
     \item \texttt{labels} is an array containing the labels of the instances in \texttt{inst\_keys}.
-    \item \texttt{l\_proba} is an array containing the values $P(pt | \ell)$ for each label $\ell$.
-\end{itemize}
+\end{itemize}each 
 
+\subsubsection{Additional properties}
+The class ACTS, other than instances and properties, contains other two properties: \texttt{lam, probas}:
+\begin{itemize}
+    \item lam : value of $\lambda$ used in the modeling part (exponential distribution).
+    \item probas : values of $p_1, \dots, p_L$ used in the modeling part (multinomial distribution).
+\end{itemize}
 
 
 

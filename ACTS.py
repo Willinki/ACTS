@@ -78,14 +78,22 @@ class ACTS:
     Properties
     ----------
         - patterns: pd.DataFrame
-            cols : key, ts, inst_keys, labels, l_probas
+            cols : key, ts, inst_keys, labels
             
         - instances : pd.Dataframe
             cols : key, ts, label, near_pt
+            
+        - lam : float
+            parameter for exponential distribution 
+        
+        - probas : array-like
+            parameters of the multinomial distribution
     """
     def __init__(self):
         self.patterns = None
         self.instances = None
+        self.lam = None
+        self.probas = None
         
 
     def __call__(self, X: modALinput,
@@ -126,8 +134,8 @@ class ACTS:
             self._assign_instances(empty_only=False)
             self._assign_patterns()
         # MODELING
-        self._update_l_probas()
-        lam = self._calculate_lambda(X)
+        self.lam = self._calculate_lambda(X, DL)
+        self._calculate_multinomial(DL)
         # QUESTION SELECTION
         # STEPS:
         #        compute utility
@@ -181,7 +189,7 @@ class ACTS:
         """
 
         
-    def _calculate_lambda(self, X):
+    def _calculate_lambda(self, X, DL) -> None:
         """Calculates the value of lambda (MLE), used in P(X | pt)
         
         Args : see __call__
@@ -189,11 +197,16 @@ class ACTS:
 
 
     @staticmethod
-    def _pt_proba(X : np.array, pt : np.array, lam : float) -> float:
-        """Given instance and pattern, calculates P(X | pt)
+    def _dis(X : np.array, pt : np.array) -> float:
+        """Given instance and pattern, calculates Dis(X, pt)
+        
+        Args
+        ----
+            - X : (array-like)
+        
         """
 
     
-    def _update_l_probas(self) -> None:
-        """For each pt, calculate P(pt | ell) for each ell
+    def __calculate_multinomial(self) -> None:
+        """Calculates self.
         """
