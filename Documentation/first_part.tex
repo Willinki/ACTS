@@ -1,0 +1,175 @@
+\section{Sketching the overall structure of ACTS}
+As also stated in the Github Repo, ACTS is defined as a query strategy to be put inside \texttt{va\_builder}.
+
+Similarly to other query strategies, we defined ACTS as a wrapper class for the actual algorithm. The reason for
+this is that ACTS needs some elements to work, which are patterns and instances. The value of this elements must be 
+stored after every call of the algorithm. Rather than defining function attributes as:
+\begin{python}
+    def ACTS():
+        ... 
+        <insert algorithm here>
+        ... 
+
+    ACTS.patterns = set_patterns()
+    ACTS.instances = set_instances()
+\end{python}
+
+We chose to define a wrapper class whose constructor does not take any argument. The actual algorithm will be then 
+put inside \texttt{\_\_call\_\_}.
+
+So for example:
+\begin{python}
+    class ACTS:
+
+        def __init__(self):
+            self.patterns = None
+            self.instances = None
+        
+        def __call__(self):
+            ... 
+            <insert algorithm here>
+            ... 
+            
+\end{python}
+
+\subsection{Before The Algorithm}
+First, the ACTS must be defined and used as an argument inside the \texttt{almanager} constructor:
+\begin{python}
+    acts = ACTS()
+    alm = ALManager(..., query_strategy = acts, ...)
+\end{python}
+
+Then, the query strategy is used in the method \texttt{query} 
+of class \texttt{ALManager}. First, a function called
+\texttt{select\_query\_strategy} is called. The function performs some controls on the 
+state of the data and on the type of query strategy and returns something like: 
+\texttt{partial(alm.query\_strategy, ...additional arguments, depend on qs)}.
+\begin{python}
+    def select_query_strategy(alm):
+        ... 
+        if <control> :
+            return partial(...)
+        
+        elif <control> : 
+            return partial(...)
+        
+        ...
+\end{python}
+
+For ACTS, it is necessary do add an \texttt{elif} clause before the last one. After 
+the clause, we return the object with partial:
+\begin{python}
+    elif np.all(
+        np.in1d(
+            ["DL", "L", "Li"],
+            getfullargspec(alm.query_strategy).args,
+        )
+    ):
+        DL, L, Li = alm.dm.get_training_data()
+        X, _ = alm.dm.get_X_pool() 
+        return partial(
+            alm.query_strategy,
+            X = X,
+            DL = DL, 
+            L = L, 
+            Li = Li
+        )
+\end{python}
+
+This should be enough to apply the actual algorithm, which is now integrated inside
+\texttt{modAL}.
+
+\subsection{The actual algorithm}
+Here a general schema of the first part of ACTS is given:
+\begin{itemize}
+    \item When the object is called for the first time, a small initial training set
+    is available, which is referred to as $D_{L0}$. Starting from this, patterns and 
+    instances are initialized. Each instance is a pattern by itself.
+    \item From here on, each time the object is called, it comes with a new training
+    set $D_{Ln}$, containing more labelled instances. New instances are assigned to 
+    their nearest pattern.
+    \item Then, each pattern is checked, if a pattern contains more than one label 
+    (it's \textit{mixed}), it must split into two, finding the one that achieves 
+    the optimal information gain. 
+
+    To do this, a total of 4 approaches is available:
+    \begin{itemize}
+        \item Original method: brute force pruned. Always achieves optimal solution, might be slow, 
+        needs to be implemented.
+        \item Fast-shapelets: Novel method, slightly faster and usually finds the optimal solution.
+        Needs to be implemented (available in cpp). 
+        \item Ultra-fast shapelets: sacrifices accuracy for speed, might obtain suboptimal solutions. 
+        Needs to be implemented.
+        \item Gradient descent: slightly faster than the original method, has an hyperparameter that has
+        to be tuned. Already implemented in \texttt{tslearn}. 
+    \end{itemize}
+    For now, we'll use the last method. If everything is good, the best option is fast-shapelets. (Boy it'll be fun).
+    \item After splitting the patterns, reassign each instance to its nearest pattern.
+    \item Now, given each instance $X$, and each pattern $pt$ we have to calculate the following quantity:
+    \begin{equation}
+        P(X | pt) = \exp(-\lambda D(X, pt))
+        \label{eq:pxpt}
+    \end{equation}
+    Where $D$ is the minimum distance obtained with a \textit{sliding window} and $\lambda$ is the real positive 
+    number for which the following equation holds:
+    \begin{equation}
+        \lambda \hat{Dis}(X, pt) = 1
+    \end{equation}
+    Where we used the mean of $Dis$.
+    \item After this, we have to calculate the following quantity for each pattern $pt$ and each label $\ell$:
+    \begin{equation}
+        P(pt | \ell) = Multi(p_1, \dots, p_L)
+    \end{equation}
+    Which is multinomial distribution whose parameters need to be estimated with maximum likelihood 
+    (needs to be implemented).
+\end{itemize}
+
+The second part of the algorithm aim at calculating uncertainty and utility of each instance.
+
+\subsection{Defining patterns and instances}
+When the algorithm is called for the first time, patterns and instances need to be initialized.
+
+We'll now define the structure of this elements:
+
+\paragraph{Instances}
+Instances are labelled elements in the dataset. Every has a unique index (in the argument \texttt{Li}), and some 
+values (an np array). When applying this algorithm we need additional information about the instances, so:
+\textbf{All the instances are collected inside a pandas dataframe}, the keys of this dataframe are the indexes of 
+the instances, the columns are the following:
+
+\begin{itemize}
+    \item \texttt{ts} is the actual time series (np.array).
+    \item \texttt{label} is the label of the instance (int).
+    \item \texttt{near\_pt} is the key of the nearest pattern
+    \item \texttt{pt\_probas} is an array containing $P(X | pt)$ for each $pt$.
+\end{itemize}
+
+\paragraph{Patterns}
+A pattern is a small sequence of values that represents a part of the dataset. Every pattern must contain 
+some additional information, the same way for instances. So, \textbf{All the patterns are collected in a 
+Pandas dataframe}. Each row has a key and some fields.
+
+In this case patterns do not have a unique index, so the key is defined as the following: given a pattern
+$pt = [x_1, \dots, x_n]$, its key will be:
+$$
+    mean(pt) \longrightarrow round(\,\, ,6) \longrightarrow hash()
+$$
+
+It is highly unlikable that two patterns will have the same mean value until the sixth decimal, also, 
+if two patterns are the same, there is no need to keep them divided, they will be one pattern, so 
+this seems reasonable.
+
+Now that the key is defined, we define other fields.
+
+\begin{itemize}
+    \item \texttt{ts} is the sequence of values.
+    \item \texttt{inst\_keys} array containing the keys of the instances assigned to that pattern.
+    Basically earlier we assigned each instance to its nearest pattern. Here we collect all the
+    instances with a certain pattern as nearest.
+    \item \texttt{labels} is an array containing the labels of the instances in \texttt{inst\_keys}.
+    \item \texttt{l\_proba} is an array containing the values $P(pt | \ell)$ for each label $\ell$.
+\end{itemize}
+
+
+
+
