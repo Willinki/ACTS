@@ -62,7 +62,6 @@ def k(X : np.ndarray) -> int:
 
 @njit(parallel=True)
 def _dis(X : np.ndarray, pt : np.ndarray) -> float:
-    # TODO FIX THIS
     """Given instance and pattern, calculates Dis(X, pt), sliding window.
     Used in _calculate_probx. 
     
@@ -72,11 +71,14 @@ def _dis(X : np.ndarray, pt : np.ndarray) -> float:
         - pt : (array-like) pattern
     """
     m = len(pt)
-    dist = np.square(pt[0] - X[:-m])
-    for i in prange(1, m):
-        dist += np.square(pt[i] - X[i:-m+i])
-    return np.sqrt(dist, out=dist)
-
+    n = len(X)
+    dist_array = np.empty(shape=(n-m, ))
+    for i in prange(m, n):
+        dist_array[i] = np.linalg.norm(
+            X[(i-m):i] - pt[:]
+            )
+    return dist_array.min()
+        
 @njit(parallel=True)
 def _fast_lambda(tss : np.ndarray, pts : np.ndarray) -> float:
     """Wrapper function used in ACTS._calculate_lambda
@@ -252,7 +254,7 @@ class ACTS:
             Xs = X[random.sample(range(X.shape[0]), nsamples_X)]
             DLs = DL[random.sample(range(DL.shape[0]), nsamples_DL)]
             self.lam += _fast_lambda(tss = np.vstack(Xs, DLs), 
-                                     pts = self.patterns["ts"].to_numpy
+                                     pts = self.patterns["ts"].to_numpy()
                                     )/N
                     
             
