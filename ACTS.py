@@ -4,6 +4,7 @@ For any additional information see documentation.
 """
 import pandas as pd
 import numpy as np
+import math
 from numba import njit, prange
 
 def _shuffled_argmax(values: np.ndarray, n_instances: int = 1) -> np.ndarray:
@@ -218,8 +219,9 @@ class ACTS:
             - X : (array-like) instance
             - pt : (array-like) pattern
         """
-        
-        
+        return math.exp(-self.lam*_dis(X, pt))
+    
+    
     def __calculate_multinomial(self) -> None:
         """Calculates self.probas
         """
