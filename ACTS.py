@@ -4,6 +4,7 @@ For any additional information see documentation.
 """
 import pandas as pd
 import numpy as np
+import random
 import math
 from numba import njit, prange
 
@@ -61,6 +62,7 @@ def k(X : np.ndarray) -> int:
 
 @njit(parallel=True)
 def _dis(X : np.ndarray, pt : np.ndarray) -> float:
+    # TODO FIX THIS
     """Given instance and pattern, calculates Dis(X, pt), sliding window.
     Used in _calculate_probx. 
     
@@ -74,7 +76,31 @@ def _dis(X : np.ndarray, pt : np.ndarray) -> float:
     for i in prange(1, m):
         dist += np.square(pt[i] - X[i:-m+i])
     return np.sqrt(dist, out=dist)
+
+@njit(parallel=True)
+def _fast_lambda(tss : np.ndarray, pts : np.ndarray) -> float:
+    """Wrapper function used in ACTS._calculate_lambda
+    Takes mean of _dis(X, pt) w.r.t all pts and all tss
     
+    Args
+    ----
+        - tss : (n_instances, n_timestamps)
+            2d array of instances
+        - pts : (n_instances, n_timestamps)
+            2d array of patterns
+    
+    Returns
+    -------
+        - lam : float
+            Mean of _dis(ts, pt) between al tss and pts
+    """
+    lam = 0
+    N = tss.shape[0]*pts.shape[0]
+    for i in prange(tss.shape[0]):
+        for j in prange(pts.shape[0]):
+            lam += _dis(tss[i], pts[j])/N
+
+
 # SHOULD RETURN UNCERTAINTY VALUE
 def compute_uncertainty(DL, X, L, k):
     # uncertainty =
@@ -204,13 +230,33 @@ class ACTS:
         """
 
         
-    def _calculate_lambda(self, X, DL) -> None:
+    def _calculate_lambda(self, X : np.ndarray, DL : np.ndarray, 
+                          sample_size : float = 0.05, N : int = 10) -> None:
         """Calculates the value of lambda (MLE), used in P(X | pt)
         
-        Args : see __call__
+        Args
+        ----
+            - X : (shape = (n_instances, n_timestamps)
+                Dataset of unlabelled instances
+            - DL : (shape = (n_instances, n_timestamps)
+                Dataset of labelled instances
         """
-
-
+        self.lam = 0
+        # prepare stratified sampling
+        tot_samples = (DL.shape[0] + X.shape[0])*sample_size
+        ratio = X.shape[0] / (X.shape[0] + DL.shape[0])
+        nsamples_DL = math.ceil(tot_samples*(1-ratio))
+        nsamples_X = math.ceil(tot_samples*ratio)
+        for _ in range(N):
+            # take samples
+            Xs = X[random.sample(range(X.shape[0]), nsamples_X)]
+            DLs = DL[random.sample(range(DL.shape[0]), nsamples_DL)]
+            self.lam += _fast_lambda(tss = np.vstack(Xs, DLs), 
+                                     pts = self.patterns["ts"].to_numpy
+                                    )/N
+                    
+            
+            
     def _calculate_probx(self, X, pt) -> None:
         """Calculates the value of P(X | pt)
         
