@@ -80,7 +80,6 @@ def _dis(X : np.ndarray, pt : np.ndarray) -> float:
 @njit(parallel=True)
 def _fast_lambda(tss : np.ndarray, pts : np.ndarray) -> float:
     """Wrapper function used in ACTS._calculate_lambda
-    Takes mean of _dis(X, pt) w.r.t all pts and all tss
     
     Args
     ----
@@ -92,13 +91,14 @@ def _fast_lambda(tss : np.ndarray, pts : np.ndarray) -> float:
     Returns
     -------
         - lam : float
-            Mean of _dis(ts, pt) between al tss and pts
+            Mean of _dis(ts, pt) between al ts in tss and pt in pts
     """
     lam = 0
     N = tss.shape[0]*pts.shape[0]
     for i in prange(tss.shape[0]):
         for j in prange(pts.shape[0]):
             lam += _dis(tss[i], pts[j])/N
+    return lam
 
 
 # SHOULD RETURN UNCERTAINTY VALUE
