@@ -121,22 +121,18 @@ class ACTS:
     Properties
     ----------
         - patterns: pd.DataFrame
-            cols : key, ts, inst_keys, labels
+            cols : key, ts, inst_keys, labels, l_probas
             
         - instances : pd.Dataframe
             cols : key, ts, label, near_pt
             
         - lam : float
             parameter for exponential distribution 
-        
-        - probas : array-like
-            parameters of the multinomial distribution
     """
     def __init__(self):
         self.patterns = None
         self.instances = None
         self.lam = None
-        self.probas = None
         
 
     def __call__(self, X: np.ndarray,
@@ -234,7 +230,7 @@ class ACTS:
         
     def _calculate_lambda(self, X : np.ndarray, DL : np.ndarray, 
                           sample_size : float = 0.05, N : int = 10) -> None:
-        """Calculates the value of lambda (MLE), used in P(X | pt)
+        """Calculates the value of self.lam, used in P(X | pt)
         
         Args
         ----
