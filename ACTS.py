@@ -4,8 +4,7 @@ For any additional information see documentation.
 """
 import pandas as pd
 import numpy as np
-from modAL.utils.data import modALinput 
-from sklearn.base import BaseEstimator
+from numba import njit, prange
 
 def _shuffled_argmax(values: np.ndarray, n_instances: int = 1) -> np.ndarray:
     """
@@ -50,7 +49,7 @@ def _multi_argmax(values: np.ndarray, n_instances: int = 1) -> np.ndarray:
     return max_idx
 
 
-def k(X : np.array) -> int:
+def k(X : np.ndarray) -> int:
     """
     Extracts key from sequence of values.
     Used to assign a key to patterns.
@@ -59,6 +58,21 @@ def k(X : np.array) -> int:
         round(np.mean(X), 6)
         )
 
+@njit(parallel=True)
+def _dis(X : np.ndarray, pt : np.ndarray) -> float:
+    """Given instance and pattern, calculates Dis(X, pt), sliding window.
+    Used in _calculate_probx. 
+    
+    Args
+    ----
+        - X : (array-like) instance
+        - pt : (array-like) pattern
+    """
+    m = len(pt)
+    dist = np.square(pt[0] - X[:-m])
+    for i in prange(1, m):
+        dist += np.square(pt[i] - X[i:-m+i])
+    return np.sqrt(dist, out=dist)
     
 # SHOULD RETURN UNCERTAINTY VALUE
 def compute_uncertainty(DL, X, L, k):
@@ -96,8 +110,8 @@ class ACTS:
         self.probas = None
         
 
-    def __call__(self, X: modALinput,
-                 DL: modALinput, 
+    def __call__(self, X: np.ndarray,
+                 DL: np.ndarray, 
                  L: np.ndarray, 
                  Li: np.ndarray, 
                  n_instances: int = 1, 
@@ -196,17 +210,16 @@ class ACTS:
         """
 
 
-    @staticmethod
-    def _dis(X : np.array, pt : np.array) -> float:
-        """Given instance and pattern, calculates Dis(X, pt)
+    def _calculate_probx(self, X, pt) -> None:
+        """Calculates the value of P(X | pt)
         
         Args
         ----
-            - X : (array-like)
-        
+            - X : (array-like) instance
+            - pt : (array-like) pattern
         """
-
-    
+        
+        
     def __calculate_multinomial(self) -> None:
-        """Calculates self.
+        """Calculates self.probas
         """
