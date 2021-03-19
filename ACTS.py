@@ -99,10 +99,38 @@ def _fast_lambda(tss : np.ndarray, pts : np.ndarray) -> float:
     N = tss.shape[0]*pts.shape[0]
     for i in prange(tss.shape[0]):
         for j in prange(pts.shape[0]):
-            lam += _dis(tss[i], pts[j])/N
+            lam += 1/(_dis(tss[i], pts[j])/N)
     return lam
 
-
+@njit(parallel=True)
+def _fast_nn(tss : np.ndarray, pts : np.ndarray) -> np.ndarray:
+    # TODO if instances and pattens are too many this becomes prohibitive on memory, but its the fastest
+    """Wrapper function used in ACTS.assign_instances.
+    For each tss computes the nearest pt.
+    
+    Args
+    ----
+        - tss : (n_instances, n_timestamps)
+            2d array of instances
+        - pts : (n_instances, n_timestamps)
+            2d array of patterns
+    
+    Returns
+    -------
+        - nn_pt : array (int)
+            Array of integers containing integer index of nn
+            for each instance
+    """
+    distances = np.empty(shape=(tss.shape[0], pts.shape[0]))
+    nn_pt = np.empty(shape=(tss.shape[0], ))
+    for i in prange(tss.shape[0]):
+        for j in prange(pts.shape[0]):
+            distances[i][j] = _dis(tss[i], pts[j])
+    for i in prange(tss.shape[0]):
+        nn_pt[i] = np.argmin(distances[i, :])
+    return nn_pt
+        
+            
 # SHOULD RETURN UNCERTAINTY VALUE
 def compute_uncertainty(DL, X, L, k):
     # uncertainty =
@@ -193,28 +221,46 @@ class ACTS:
         
         Args : see __call__
         """
+        self.instances = pd.DataFrame({
+            "key" : Li,
+            "ts" : [DL[i] for i in range(DL.shape[0])],
+            "label" : L,
+            "near_pt" : [np.nan for _ in L]
+        }).set_index("key")
 
 
     def _initialize_patterns(self) -> None:
         """For each instance, add pattern
         """
-
-
-    def _update_instances(self, DL, L, Li) -> None:
-        """For each element in DL, check if exists in instances
-           if not, add
-        
-        Args : see __call__
-        """
+        #key, ts, inst_keys, labels, l_probas
+        inst_values = self.instances["ts"].to_numpy()
+        self.patterns = pd.DataFrame({
+           "key" : [k(inst) for inst in inst_values],
+           "ts" : [inst for inst in inst_values],
+           "inst_keys" : [np.array([ind]) for ind in self.instances.index],
+           "labels" : [np.array([lab]) for lab in self.instances["label"].to_numpy()],
+           "l_probas" : [np.nan for _ in self.instances.index]
+        }).set_index("key")
 
 
     def _assign_instances(self, empty_only : bool) -> None:
         """For each instance, update near_pt
         
         Args : 
-            empty_only : (bool) if true, only instances with n_pt = None are
+            empty_only : (bool) if true, only instances with n_pt = np.nan are
                 updated 
         """
+        if empty_only:
+            indexes = self.instances[self.instances["near_pt"].isna()].index
+        else:
+            indexes = self.instances.index
+        patterns_array = self.patterns["ts"].to_numpy()
+        int_pattern_idx = _fast_nn(
+            tss = self.instances.loc[indexes]["ts"].to_numpy(),
+            pts = patterns_array
+        )
+        #hash int indexes to pattern keys
+        self.instances.loc[indexes] = [hash(pt) for pt in patterns_array[int_pattern_idx]]
 
 
     def _assign_patterns(self) -> None:
@@ -228,8 +274,16 @@ class ACTS:
         """
 
         
+    def _update_instances(self, DL, L, Li) -> None:
+        """For each element in DL, check if exists in instances
+           if not, add
+        
+        Args : see __call__
+        """
+
+
     def _calculate_lambda(self, X : np.ndarray, DL : np.ndarray, 
-                          sample_size : float = 0.05, N : int = 10) -> None:
+                          sample_size : float = 0.01, N : int = 50) -> None:
         """Calculates the value of self.lam, used in P(X | pt)
         
         Args
@@ -249,6 +303,7 @@ class ACTS:
             # take samples
             Xs = X[random.sample(range(X.shape[0]), nsamples_X)]
             DLs = DL[random.sample(range(DL.shape[0]), nsamples_DL)]
+            # calculate lambda for samples, take mean
             self.lam += _fast_lambda(tss = np.vstack(Xs, DLs), 
                                      pts = self.patterns["ts"].to_numpy()
                                     )/N
