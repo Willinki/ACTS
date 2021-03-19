@@ -413,3 +413,5 @@ TSWLatexianTemp*
 # xwatermark package
 *.xwm
 
+# notebook for exploration
+explore.ipynb
