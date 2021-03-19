@@ -52,7 +52,6 @@ def _multi_argmax(values: np.ndarray, n_instances: int = 1) -> np.ndarray:
 
 
 def k(X : np.ndarray) -> int:
-    # TODO test
     """
     Extracts key from sequence of values.
     Used to assign a key to patterns.
@@ -61,9 +60,9 @@ def k(X : np.ndarray) -> int:
         round(np.mean(X), 6)
         )
 
+
 @njit(parallel=True)
 def _dis(X : np.ndarray, pt : np.ndarray) -> float:
-    # TODO test
     """Given instance and pattern, calculates Dis(X, pt), sliding window.
     Used in _calculate_probx. 
     
@@ -82,6 +81,7 @@ def _dis(X : np.ndarray, pt : np.ndarray) -> float:
         )
     return dist_array.min()
         
+
 @njit(parallel=True)
 def _fast_lambda(tss : np.ndarray, pts : np.ndarray) -> float:
     # TODO test
@@ -107,6 +107,7 @@ def _fast_lambda(tss : np.ndarray, pts : np.ndarray) -> float:
         for j in prange(pts.shape[0]):
             lam += (1./_dis(tss[i], pts[j]))/N
     return lam
+
 
 @njit(parallel=True)
 def _fast_nn(tss : np.ndarray, pts : np.ndarray) -> np.ndarray:
@@ -177,7 +178,7 @@ class ACTS:
                  n_instances: int = 1, 
                  random_tie_break: bool = False,
                  **uncertainty_measure_kwargs) -> np.ndarray :
-        # TODO test
+        # TODO test (do I have to say it?) 
         """Sampling based on the measures defined by ACTS.
         
         Args
@@ -285,6 +286,7 @@ class ACTS:
         - self.patterns.labels : np.array 
             Keys of instances that have the pattern as near_pt
         """
+        # TODO test
         for index, _ in self.patterns.iterrows():
             nn_instances = self.instances[
                     self.instances["near_pt"] is index
