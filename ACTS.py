@@ -361,6 +361,15 @@ class ACTS:
         return math.exp(-self.lam*_dis(X, pt))
     
     
-    def __calculate_multinomial(self) -> None:
-        """Calculates self.probas
+    def _calculate_multinomial(self) -> None:
+        # TODO optimize this if code is slow
+        """For each pattern, given labels, calculates l_probas
+        
+        Performs multinomial MLE:
+            p_i = \sum_n l_n / N
+            - l_i : 1 if n = i, 0 otherwise
+            - N : length of labels
         """
+        self.patterns["l_probas"] = self.patters["labels"].apply(
+            lambda ls : np.unique(ls, return_counts=True)[1]/len(ls)
+        )
