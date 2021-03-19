@@ -52,6 +52,7 @@ def _multi_argmax(values: np.ndarray, n_instances: int = 1) -> np.ndarray:
 
 
 def k(X : np.ndarray) -> int:
+    # TODO test
     """
     Extracts key from sequence of values.
     Used to assign a key to patterns.
@@ -62,6 +63,7 @@ def k(X : np.ndarray) -> int:
 
 @njit(parallel=True)
 def _dis(X : np.ndarray, pt : np.ndarray) -> float:
+    # TODO test
     """Given instance and pattern, calculates Dis(X, pt), sliding window.
     Used in _calculate_probx. 
     
@@ -72,16 +74,20 @@ def _dis(X : np.ndarray, pt : np.ndarray) -> float:
     """
     m = len(pt)
     n = len(X)
+    assert n >= m, "In _dis, a sequence is longer than a pattern"
     dist_array = np.empty(shape=(n-m, ))
     for i in prange(m, n):
-        dist_array[i] = np.linalg.norm(
+        dist_array[i-m] = np.linalg.norm(
             X[(i-m):i] - pt[:]
-            )
+        )
     return dist_array.min()
         
 @njit(parallel=True)
 def _fast_lambda(tss : np.ndarray, pts : np.ndarray) -> float:
+    # TODO test
     """Wrapper function used in ACTS._calculate_lambda
+    Calculates mean of _dis(ts, pt)^(-1) for every possible ts in tss
+    and pt in pts
     
     Args
     ----
@@ -99,14 +105,15 @@ def _fast_lambda(tss : np.ndarray, pts : np.ndarray) -> float:
     N = tss.shape[0]*pts.shape[0]
     for i in prange(tss.shape[0]):
         for j in prange(pts.shape[0]):
-            lam += 1/(_dis(tss[i], pts[j])/N)
+            lam += (1./_dis(tss[i], pts[j]))/N
     return lam
 
 @njit(parallel=True)
 def _fast_nn(tss : np.ndarray, pts : np.ndarray) -> np.ndarray:
-    # TODO if instances and pattens are too many this becomes prohibitive on memory, but its the fastest
+    # TODO test
+    # If instances and pattens are too many this becomes prohibitive on memory, but its the fastest
     """Wrapper function used in ACTS.assign_instances.
-    For each tss computes the nearest pt.
+    For each ts in tss computes the nearest pt in ptt.
     
     Args
     ----
@@ -125,7 +132,7 @@ def _fast_nn(tss : np.ndarray, pts : np.ndarray) -> np.ndarray:
     nn_pt = np.empty(shape=(tss.shape[0], ))
     for i in prange(tss.shape[0]):
         for j in prange(pts.shape[0]):
-            distances[i][j] = _dis(tss[i], pts[j])
+            distances[i, j] = _dis(tss[i], pts[j])
     for i in prange(tss.shape[0]):
         nn_pt[i] = np.argmin(distances[i, :])
     return nn_pt
@@ -170,6 +177,7 @@ class ACTS:
                  n_instances: int = 1, 
                  random_tie_break: bool = False,
                  **uncertainty_measure_kwargs) -> np.ndarray :
+        # TODO test
         """Sampling based on the measures defined by ACTS.
         
         Args
@@ -217,6 +225,7 @@ class ACTS:
 
     
     def _initialize_instances(self, DL, L, Li) -> None:
+        # TODO test
         """For each element in DL, L, Li add instance
         
         Args : see __call__
@@ -230,6 +239,7 @@ class ACTS:
 
 
     def _initialize_patterns(self) -> None:
+        # TODO test
         """For each instance, add pattern
         """
         #key, ts, inst_keys, labels, l_probas
@@ -244,6 +254,7 @@ class ACTS:
 
 
     def _assign_instances(self, empty_only : bool) -> None:
+        # TODO test extensively 
         """For each instance, update near_pt
         
         Args : 
@@ -260,12 +271,28 @@ class ACTS:
             pts = patterns_array
         )
         #hash int indexes to pattern keys
-        self.instances.loc[indexes] = [hash(pt) for pt in patterns_array[int_pattern_idx]]
+        self.instances.loc[indexes] = [
+            hash(pt) 
+            for pt in patterns_array[int_pattern_idx]
+        ]
 
 
     def _assign_patterns(self) -> None:
-        """For each pattern, update inst_keys, labels
+        """For each pattern, update inst_keys, labels.
+        
+        - self.patterns.inst_keys : np.array 
+            Keys of instances that have the pattern as near_pt
+        - self.patterns.labels : np.array 
+            Keys of instances that have the pattern as near_pt
         """
+        for index, _ in self.patterns.iterrows():
+            nn_instances = self.instances[
+                    self.instances["near_pt"] is index
+            ]
+            self.pattern.loc[index]["inst_keys"] = np.array(
+                nn_instances.index
+            )
+            self.pattern.loc[index]["labels"] = nn_instances["label"].to_numpy()
         
 
     def _update_patterns(self) -> None:
@@ -275,15 +302,29 @@ class ACTS:
 
         
     def _update_instances(self, DL, L, Li) -> None:
+        # TODO test
         """For each element in DL, check if exists in instances
-           if not, add
+           if not, add to self.istances
         
         Args : see __call__
         """
+        new_keys = np.setdiff1d(Li, self.instances.index)
+        new_idxs = np.where(
+            np.in1d(Li, new_keys, assume_unique=True)
+        )
+        self.instances = self.instances.append(
+            pd.DataFrame({
+                "key" : new_keys,
+                "ts" : DL[new_idxs],
+                "label" : L[new_idxs],
+                "near_pt" : [np.nan for _ in L]
+            })
+        )
 
 
     def _calculate_lambda(self, X : np.ndarray, DL : np.ndarray, 
                           sample_size : float = 0.01, N : int = 50) -> None:
+        # TODO test extensively
         """Calculates the value of self.lam, used in P(X | pt)
         
         Args
@@ -308,7 +349,6 @@ class ACTS:
                                      pts = self.patterns["ts"].to_numpy()
                                     )/N
                     
-            
             
     def _calculate_probx(self, X, pt) -> None:
         """Calculates the value of P(X | pt)
