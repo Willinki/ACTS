@@ -364,6 +364,10 @@ class ACTS:
         Use to set into summation equation.
         Multiply with quota of distances.
         """
+        # to obtain X'.pt 
+        # pattern_key = self.instances.get_value(<index_of_X'>, "near_pt")
+        # then -->
+        # X.pt = self.patterns.get_value(pattern_key, "ts")
         LN_Ks = NearestNeighbors(n_neighbors=k, algorithm='ball_tree').fit(X)
         z = len(LN_Ks)
         for i in range(len(LN_Ks)):
