@@ -73,18 +73,18 @@ def _dis(X : np.ndarray, pt : np.ndarray) -> float:
     """
     m = len(pt)
     n = len(X)
+    print(n, m)
     assert n >= m, "In _dis, a sequence is longer than a pattern"
-    dist_array = np.empty(shape=(n-m, ))
-    for i in prange(m, n):
-        dist_array[i-m] = np.linalg.norm(
-            X[(i-m):i] - pt[:]
+    dist_array = np.empty(shape=(n-m+1, ))
+    for i in prange(0, n-m+1):
+        dist_array[i] = np.linalg.norm(
+            X[i:(i+m)] - pt[:]
         )
     return dist_array.min()
         
 
 @njit(parallel=True)
 def _fast_lambda(tss : np.ndarray, pts : np.ndarray) -> float:
-    # TODO test
     """Wrapper function used in ACTS._calculate_lambda
     Calculates mean of _dis(ts, pt)^(-1) for every possible ts in tss
     and pt in pts
@@ -101,11 +101,12 @@ def _fast_lambda(tss : np.ndarray, pts : np.ndarray) -> float:
         - lam : float
             Mean of _dis(ts, pt) between al ts in tss and pt in pts
     """
-    lam = 0
+    mean = 0
     N = tss.shape[0]*pts.shape[0]
     for i in prange(tss.shape[0]):
         for j in prange(pts.shape[0]):
-            lam += (1./_dis(tss[i], pts[j]))/N
+            mean += _dis(tss[i], pts[j])/N
+    lam = 1/mean
     return lam
 
 
