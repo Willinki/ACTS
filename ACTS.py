@@ -8,7 +8,8 @@ import random
 import math
 from numba import njit, prange
 from sklearn.neighbors import NearestNeighbors
-
+from tslearn.shapelets import LearningShapelets, grabocka_params_to_shapelet_size_dict
+from tensorflow.keras.optimizers import Adam
 
 def _shuffled_argmax(values: np.ndarray, n_instances: int = 1) -> np.ndarray:
     """
@@ -284,9 +285,48 @@ class ACTS:
 
     def _update_patterns(self) -> None:
         """For each pattern, check if mixed, 
-           if yes, split (delete old pattern, add 2 new ones)
+           if yes, split (delete old pattern, add new ones)
         """
-        # TODO 
+        self.patterns["mixed_bool"] = self.patterns["labels"].apply(
+            lambda x : len(np.unique(x))
+        )
+        mixed_pts = self.patterns[["inst_keys", "labels"]]
+        #dropping mixed patterns
+        self.patterns = self.patterns.drop(mixed_pts.index)
+        # this will contain the new patterns
+        new_pts = []
+        for _, row in mixed_pts.iterrows():
+            instances = self.instances.loc[row["inst_keys"]].to_numpy()
+            labels = row["labels"]
+            dict_shapelets = grabocka_params_to_shapelet_size_dict(
+                n_ts = instances.shape[0], 
+                ts_sz = len(instances[0]),
+                n_classes = len(np.unique(labels)),
+                l=0.1,
+                r=1
+            )
+            model = LearningShapelets(
+                n_shapelets_per_size=dict_shapelets,
+                optimizer=Adam(.01),
+                batch_size=32,
+                weight_regularizer=.01,
+                random_state=0,
+                verbose=0
+            )
+            model.fit(instances, labels)
+            new_pts.append(model.shapelets_as_time_series_)
+        
+        #ADD NEW PATTERNS
+        self.patterns = self,.patterns.append(
+            pd.DataFrame({
+                "key" : [k(x) for x in new_pts],
+                "ts" : new_pts,
+                "inst_keys" : [np.nan for _ in new_pts], 
+                "labels" : [np.nan for _ in new_pts], 
+                "l_probas" : [np.nan for _ in new_pts]
+            })
+        )
+            
 
     def _update_instances(self, DL, L, Li) -> None:
         # TODO test
