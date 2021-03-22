@@ -7,6 +7,8 @@ import numpy as np
 import random
 import math
 from numba import njit, prange
+from sklearn.neighbors import NearestNeighbors
+
 
 def _shuffled_argmax(values: np.ndarray, n_instances: int = 1) -> np.ndarray:
     """
@@ -51,7 +53,7 @@ def _multi_argmax(values: np.ndarray, n_instances: int = 1) -> np.ndarray:
     return max_idx
 
 
-def k(X : np.ndarray) -> int:
+def k(X: np.ndarray) -> int:
     """
     Extracts key from sequence of values.
     Used to assign a key to patterns.
@@ -62,7 +64,7 @@ def k(X : np.ndarray) -> int:
 
 
 @njit(parallel=True)
-def _dis(X : np.ndarray, pt : np.ndarray) -> float:
+def _dis(X: np.ndarray, pt: np.ndarray) -> float:
     """Given instance and pattern, calculates Dis(X, pt), sliding window.
     Used in _calculate_probx. 
     
@@ -110,7 +112,7 @@ def _fast_lambda(tss : np.ndarray, pts : np.ndarray) -> float:
 
 
 @njit(parallel=True)
-def _fast_nn(tss : np.ndarray, pts : np.ndarray) -> np.ndarray:
+def _fast_nn(tss: np.ndarray, pts: np.ndarray) -> np.ndarray:
     # TODO test
     # If instances and pattens are too many this becomes prohibitive on memory, but its the fastest
     """Wrapper function used in ACTS.assign_instances.
@@ -137,18 +139,6 @@ def _fast_nn(tss : np.ndarray, pts : np.ndarray) -> np.ndarray:
     for i in prange(tss.shape[0]):
         nn_pt[i] = np.argmin(distances[i, :])
     return nn_pt
-        
-            
-# SHOULD RETURN UNCERTAINTY VALUE
-def compute_uncertainty(DL, X, L, k):
-    # uncertainty =
-    return 
-    # return uncertainty
-
-
-def compute_utility(DU, n, S):
-    # COMPUTE UTILITY HERE
-    return
 
 
 class ACTS:
@@ -169,7 +159,6 @@ class ACTS:
         self.patterns = None
         self.instances = None
         self.lam = None
-        
 
     def __call__(self, X: np.ndarray,
                  DL: np.ndarray, 
@@ -224,7 +213,6 @@ class ACTS:
 
         return _shuffled_argmax(Q_informativeness, n_instances=n_instances)
 
-    
     def _initialize_instances(self, DL, L, Li) -> None:
         # TODO test
         """For each element in DL, L, Li add instance
@@ -238,12 +226,11 @@ class ACTS:
             "near_pt" : [np.nan for _ in L]
         }).set_index("key")
 
-
     def _initialize_patterns(self) -> None:
         # TODO test
         """For each instance, add pattern
         """
-        #key, ts, inst_keys, labels, l_probas
+        # key, ts, inst_keys, labels, l_probas
         inst_values = self.instances["ts"].to_numpy()
         self.patterns = pd.DataFrame({
            "key" : [k(inst) for inst in inst_values],
@@ -252,7 +239,6 @@ class ACTS:
            "labels" : [np.array([lab]) for lab in self.instances["label"].to_numpy()],
            "l_probas" : [np.nan for _ in self.instances.index]
         }).set_index("key")
-
 
     def _assign_instances(self, empty_only : bool) -> None:
         # TODO test extensively 
@@ -268,15 +254,14 @@ class ACTS:
             indexes = self.instances.index
         patterns_array = self.patterns["ts"].to_numpy()
         int_pattern_idx = _fast_nn(
-            tss = self.instances.loc[indexes]["ts"].to_numpy(),
-            pts = patterns_array
+            tss=self.instances.loc[indexes]["ts"].to_numpy(),
+            pts=patterns_array
         )
-        #hash int indexes to pattern keys
+        # hash int indexes to pattern keys
         self.instances.loc[indexes] = [
             hash(pt) 
             for pt in patterns_array[int_pattern_idx]
         ]
-
 
     def _assign_patterns(self) -> None:
         """For each pattern, update inst_keys, labels.
@@ -295,14 +280,12 @@ class ACTS:
                 nn_instances.index
             )
             self.pattern.loc[index]["labels"] = nn_instances["label"].to_numpy()
-        
 
     def _update_patterns(self) -> None:
         """For each pattern, check if mixed, 
            if yes, split (delete old pattern, add 2 new ones)
         """
 
-        
     def _update_instances(self, DL, L, Li) -> None:
         # TODO test
         """For each element in DL, check if exists in instances
@@ -322,7 +305,6 @@ class ACTS:
                 "near_pt" : [np.nan for _ in L]
             })
         )
-
 
     def _calculate_lambda(self, X : np.ndarray, DL : np.ndarray, 
                           sample_size : float = 0.01, N : int = 50) -> None:
@@ -350,8 +332,7 @@ class ACTS:
             self.lam += _fast_lambda(tss = np.vstack(Xs, DLs), 
                                      pts = self.patterns["ts"].to_numpy()
                                     )/N
-                    
-            
+
     def _calculate_probx(self, X, pt) -> None:
         """Calculates the value of P(X | pt)
         
@@ -361,8 +342,7 @@ class ACTS:
             - pt : (array-like) pattern
         """
         return math.exp(-self.lam*_dis(X, pt))
-    
-    
+
     def _calculate_multinomial(self) -> None:
         # TODO optimize this if code is slow
         """For each pattern, given labels, calculates l_probas
@@ -375,3 +355,27 @@ class ACTS:
         self.patterns["l_probas"] = self.patters["labels"].apply(
             lambda ls : np.unique(ls, return_counts=True)[1]/len(ls)
         )
+
+    def _calculate_uncr(self, DL, X, L, k):
+        """ Find X's k-nearest neighbours LN_Ks(X)
+        Estimate posterior P(y = l|X) from training set
+        Use to set into summation equation.
+        Multiply with quota of distances.
+        """
+        LN_Ks = NearestNeighbors(n_neighbors=k, algorithm='ball_tree').fit(X)
+        z = len(LN_Ks)
+        for i in range(len(LN_Ks)):
+            x_current = LN_Ks[i]
+            sum += (1/z) * self._calculate_probx(X, x_current) * self._calculate_multinomial()
+        post_prob = sum
+
+    def _calculate_uti(self, DU):
+        """
+        Calculate utility based on a set of questions and an unlabeled dataset.
+        
+        Args:
+            DU:
+
+        Returns:
+
+        """
