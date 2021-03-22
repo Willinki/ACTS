@@ -112,9 +112,9 @@ def _fast_lambda(tss : np.ndarray, pts : np.ndarray) -> float:
 @njit(parallel=True)
 def _fast_nn(tss : np.ndarray, pts : np.ndarray) -> np.ndarray:
     # TODO test
-    # If instances and pattens are too many this becomes prohibitive on memory, but its the fastest
+    # NOTE: If instances and pattens are too many this becomes prohibitive on memory, but its the fastest
     """Wrapper function used in ACTS.assign_instances.
-    For each ts in tss computes the nearest pt in ptt.
+    For each ts in tss computes the nearest pt in pts.
     
     Args
     ----
@@ -301,6 +301,7 @@ class ACTS:
         """For each pattern, check if mixed, 
            if yes, split (delete old pattern, add 2 new ones)
         """
+        # TODO 
 
         
     def _update_instances(self, DL, L, Li) -> None:
