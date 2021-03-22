@@ -76,7 +76,6 @@ def _dis(X: np.ndarray, pt: np.ndarray) -> float:
     """
     m = len(pt)
     n = len(X)
-    print(n, m)
     assert n >= m, "In _dis, a sequence is longer than a pattern"
     dist_array = np.empty(shape=(n-m+1, ))
     for i in prange(0, n-m+1):
@@ -104,7 +103,7 @@ def _fast_lambda(tss : np.ndarray, pts : np.ndarray) -> float:
         - lam : float
             Mean of _dis(ts, pt) between al ts in tss and pt in pts
     """
-    mean = 0
+    mean = 0.
     N = tss.shape[0]*pts.shape[0]
     for i in prange(tss.shape[0]):
         for j in prange(pts.shape[0]):
@@ -115,7 +114,6 @@ def _fast_lambda(tss : np.ndarray, pts : np.ndarray) -> float:
 
 @njit(parallel=True)
 def _fast_nn(tss: np.ndarray, pts: np.ndarray) -> np.ndarray:
-    # TODO test
     # NOTE: If instances and pattens are too many this becomes prohibitive on memory, but its the fastest
     """Wrapper function used in ACTS.assign_instances.
     For each ts in tss computes the nearest pt in pts.
@@ -156,6 +154,9 @@ class ACTS:
             
         - lam : float
             parameter for exponential distribution 
+            
+        - label_set : np.ndarray
+            array of possible label values
     """
     def __init__(self):
         self.patterns = None
@@ -169,13 +170,13 @@ class ACTS:
                  n_instances: int = 1, 
                  random_tie_break: bool = False,
                  **uncertainty_measure_kwargs) -> np.ndarray :
-        # TODO test (do I have to say it?) 
         """Sampling based on the measures defined by ACTS.
         
         Args
         ----
             - X : The pool of samples to query from.
             - DL: The instances of labelled data
+                Must contain at least an instance for each label
             - L: The labels of DL
             - Li: Indices of labelled instances
             - n_instances: Number of samples to be returned.
@@ -193,6 +194,7 @@ class ACTS:
             self._initialize_instances(DL, L, Li)
             self._initialize_patterns()
             self._assign_instances(empty_only=False)
+            self.label_set = np.unique(L)
         else:
             self._update_instances(DL, L, Li)
             self._assign_instances(empty_only=True)
@@ -216,7 +218,6 @@ class ACTS:
         return _shuffled_argmax(Q_informativeness, n_instances=n_instances)
 
     def _initialize_instances(self, DL, L, Li) -> None:
-        # TODO test
         """For each element in DL, L, Li add instance
         
         Args : see __call__
@@ -229,7 +230,6 @@ class ACTS:
         }).set_index("key")
 
     def _initialize_patterns(self) -> None:
-        # TODO test
         """For each instance, add pattern
         """
         # key, ts, inst_keys, labels, l_probas
@@ -317,7 +317,7 @@ class ACTS:
             new_pts.append(model.shapelets_as_time_series_)
         
         #ADD NEW PATTERNS
-        self.patterns = self,.patterns.append(
+        self.patterns = self.patterns.append(
             pd.DataFrame({
                 "key" : [k(x) for x in new_pts],
                 "ts" : new_pts,
@@ -350,7 +350,6 @@ class ACTS:
 
     def _calculate_lambda(self, X : np.ndarray, DL : np.ndarray, 
                           sample_size : float = 0.01, N : int = 50) -> None:
-        # TODO test extensively
         """Calculates the value of self.lam, used in P(X | pt)
         
         Args
@@ -371,8 +370,8 @@ class ACTS:
             Xs = X[random.sample(range(X.shape[0]), nsamples_X)]
             DLs = DL[random.sample(range(DL.shape[0]), nsamples_DL)]
             # calculate lambda for samples, take mean
-            self.lam += _fast_lambda(tss = np.vstack(Xs, DLs), 
-                                     pts = self.patterns["ts"].to_numpy()
+            self.lam += _fast_lambda(tss = np.vstack([Xs, DLs]), 
+                                     pts = np.stack(self.patterns["ts"])
                                     )/N
 
     def _calculate_probx(self, X, pt) -> None:
@@ -386,7 +385,6 @@ class ACTS:
         return math.exp(-self.lam*_dis(X, pt))
 
     def _calculate_multinomial(self) -> None:
-        # TODO optimize this if code is slow
         """For each pattern, given labels, calculates l_probas
         
         Performs multinomial MLE:
@@ -394,10 +392,11 @@ class ACTS:
             - l_i : 1 if n = i, 0 otherwise
             - N : length of labels
         """
-        self.patterns["l_probas"] = self.patters["labels"].apply(
-            lambda ls : np.unique(ls, return_counts=True)[1]/len(ls)
+        self.patterns["l_probas"] = self.patterns["labels"].apply(
+            lambda x : np.array([
+                len(np.where(x==l)[0]) for l in self.label_set
+            ])/len(x)
         )
-
     def _calculate_uncr(self, DL, X, L, k):
         """ Find X's k-nearest neighbours LN_Ks(X)
         Estimate posterior P(y = l|X) from training set
