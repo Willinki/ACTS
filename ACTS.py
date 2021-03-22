@@ -368,13 +368,13 @@ class ACTS:
         z = len(LN_Ks)
         for i in range(len(LN_Ks)):
             x_current = LN_Ks[i]
-            sum += (1/z) * self._calculate_probx(X, x_current) * self._calculate_multinomial()
+            sum += (1 / z) * self._calculate_probx(X, x_current) * self._calculate_multinomial()
         post_prob = sum
 
     def _calculate_uti(self, DU):
         """
         Calculate utility based on a set of questions and an unlabeled dataset.
-        
+
         Args:
             DU:
 
