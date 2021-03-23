@@ -8,6 +8,7 @@ import random
 import math
 from numba import njit, prange
 from sklearn.neighbors import NearestNeighbors
+from tqdm import tqdm
 from tslearn.shapelets import LearningShapelets, grabocka_params_to_shapelet_size_dict
 from tensorflow.keras.optimizers import Adam
 
@@ -190,6 +191,7 @@ class ACTS:
             The indices of the instances from X chosen to be labelled;
         """
         # MAINTAINING PATTERNS
+        # TODO ADD CHECK_ARRAY TO SET EVERYTHING TO THE RIGHT TYPE AND DIMENSION
         if self.patterns is None:
             self._initialize_instances(DL, L, Li)
             self._initialize_patterns()
@@ -243,7 +245,6 @@ class ACTS:
         }).set_index("key")
 
     def _assign_instances(self, empty_only : bool) -> None:
-        # TODO test extensively 
         """For each instance, update near_pt
         
         Args : 
@@ -254,18 +255,18 @@ class ACTS:
             indexes = self.instances[self.instances["near_pt"].isna()].index
         else:
             indexes = self.instances.index
-        patterns_array = self.patterns["ts"].to_numpy()
+        patterns_array = np.stack(self.patterns["ts"])
         int_pattern_idx = _fast_nn(
-            tss=self.instances.loc[indexes]["ts"].to_numpy(),
+            tss=np.stack(self.instances.loc[indexes, "ts"]),
             pts=patterns_array
-        )
-        # hash int indexes to pattern keys
-        self.instances.loc[indexes] = [
-            hash(pt) 
+        ).astype("int")
+        self.instances.loc[indexes, "near_pt"] = [
+            k(pt) 
             for pt in patterns_array[int_pattern_idx]
         ]
 
     def _assign_patterns(self) -> None:
+        # NOTE: COULD BE FASTER with apply
         """For each pattern, update inst_keys, labels.
         
         - self.patterns.inst_keys : np.array 
@@ -273,65 +274,64 @@ class ACTS:
         - self.patterns.labels : np.array 
             Keys of instances that have the pattern as near_pt
         """
-        # TODO test
         for index, _ in self.patterns.iterrows():
             nn_instances = self.instances[
-                    self.instances["near_pt"] is index
+                    self.instances["near_pt"] == index
             ]
-            self.pattern.loc[index]["inst_keys"] = np.array(
+            self.patterns.loc[index]["inst_keys"] = np.array(
                 nn_instances.index
             )
-            self.pattern.loc[index]["labels"] = nn_instances["label"].to_numpy()
+            self.patterns.loc[index]["labels"] = nn_instances["label"].to_numpy()
 
-    def _update_patterns(self) -> None:
-        """For each pattern, check if mixed, 
-           if yes, split (delete old pattern, add new ones)
-        """
-        self.patterns["mixed_bool"] = self.patterns["labels"].apply(
-            lambda x : len(np.unique(x))
+def _update_patterns(self) -> None:
+    """For each pattern, check if mixed, 
+        if yes, split (delete old pattern, add new ones)
+    """
+    self.patterns["n_unique_labels"] = self.patterns["labels"].apply(
+        lambda x : len(np.unique(x))
+    )
+    mixed_pts = self.patterns[self.patterns["n_unique_labels"]!=1][["inst_keys", "labels"]]
+    #dropping mixed patterns
+    self.patterns = self.patterns.drop(mixed_pts.index)
+    # this will contain the new patterns
+    new_pts = []
+    for _, row in tqdm(mixed_pts.iterrows(), total=mixed_pts.shape[0]):
+        instances = np.stack(self.instances.loc[row["inst_keys"], "ts"])
+        labels = row["labels"]
+        dict_shapelets = grabocka_params_to_shapelet_size_dict(
+            n_ts = instances.shape[0], 
+            ts_sz = instances.shape[1],
+            n_classes = len(np.unique(labels)),
+            l=0.1,
+            r=1
         )
-        mixed_pts = self.patterns[["inst_keys", "labels"]]
-        #dropping mixed patterns
-        self.patterns = self.patterns.drop(mixed_pts.index)
-        # this will contain the new patterns
-        new_pts = []
-        for _, row in mixed_pts.iterrows():
-            instances = self.instances.loc[row["inst_keys"]].to_numpy()
-            labels = row["labels"]
-            dict_shapelets = grabocka_params_to_shapelet_size_dict(
-                n_ts = instances.shape[0], 
-                ts_sz = len(instances[0]),
-                n_classes = len(np.unique(labels)),
-                l=0.1,
-                r=1
-            )
-            model = LearningShapelets(
-                n_shapelets_per_size=dict_shapelets,
-                optimizer=Adam(.01),
-                batch_size=32,
-                weight_regularizer=.01,
-                random_state=0,
-                verbose=0
-            )
-            model.fit(instances, labels)
-            new_pts.append(model.shapelets_as_time_series_)
-        
+        model = LearningShapelets(
+            n_shapelets_per_size=dict_shapelets,
+            optimizer=Adam(.01),
+            batch_size=32,
+            weight_regularizer=.01,
+            random_state=0,
+            verbose=0
+        )
+        model.fit(instances, labels)
+        pts = model.shapelets_as_time_series_
+        new_pts += [x for x in pts.reshape((pts.shape[0], pts.shape[1]))]
+   
         #ADD NEW PATTERNS
         self.patterns = self.patterns.append(
             pd.DataFrame({
                 "key" : [k(x) for x in new_pts],
-                "ts" : new_pts,
+                "ts" : [x for x in new_pts],
                 "inst_keys" : [np.nan for _ in new_pts], 
                 "labels" : [np.nan for _ in new_pts], 
                 "l_probas" : [np.nan for _ in new_pts]
-            })
+            }).set_index("key")
         )
             
 
     def _update_instances(self, DL, L, Li) -> None:
-        # TODO test
         """For each element in DL, check if exists in instances
-           if not, add to self.istances
+            if not, add to self.istances
         
         Args : see __call__
         """
@@ -342,11 +342,12 @@ class ACTS:
         self.instances = self.instances.append(
             pd.DataFrame({
                 "key" : new_keys,
-                "ts" : DL[new_idxs],
+                "ts" : [x for x in DL[new_idxs]],
                 "label" : L[new_idxs],
-                "near_pt" : [np.nan for _ in L]
-            })
+                "near_pt" : [np.nan for _ in L[new_idxs]],
+            }).set_index("key")
         )
+
 
     def _calculate_lambda(self, X : np.ndarray, DL : np.ndarray, 
                           sample_size : float = 0.01, N : int = 50) -> None:
@@ -384,6 +385,7 @@ class ACTS:
         """
         return math.exp(-self.lam*_dis(X, pt))
 
+
     def _calculate_multinomial(self) -> None:
         """For each pattern, given labels, calculates l_probas
         
@@ -397,6 +399,8 @@ class ACTS:
                 len(np.where(x==l)[0]) for l in self.label_set
             ])/len(x)
         )
+
+
     def _calculate_uncr(self, DL, X, L, k):
         """ Find X's k-nearest neighbours LN_Ks(X)
         Estimate posterior P(y = l|X) from training set
