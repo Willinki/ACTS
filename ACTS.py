@@ -9,7 +9,7 @@ import math
 from numba import njit, prange
 from sklearn.neighbors import NearestNeighbors
 from tqdm import tqdm
-from tslearn.shapelets import LearningShapelets, grabocka_params_to_shapelet_size_dict
+from pyts.classification import LearningShapelets
 from tensorflow.keras.optimizers import Adam
 
 def _shuffled_argmax(values: np.ndarray, n_instances: int = 1) -> np.ndarray:
@@ -65,7 +65,6 @@ def k(X: np.ndarray) -> int:
         )
 
 
-@njit(parallel=True)
 def _dis(X: np.ndarray, pt: np.ndarray) -> float:
     """Given instance and pattern, calculates Dis(X, pt), sliding window.
     Used in _calculate_probx. 
@@ -78,68 +77,39 @@ def _dis(X: np.ndarray, pt: np.ndarray) -> float:
     m = len(pt)
     n = len(X)
     assert n >= m, "In _dis, a sequence is longer than a pattern"
-    dist_array = np.empty(shape=(n-m+1, ))
-    for i in prange(0, n-m+1):
-        dist_array[i] = np.linalg.norm(
+    dist_array = np.array([
+        np.linalg.norm(
             X[i:(i+m)] - pt[:]
-        )
+        )/m
+        for i in range(0, n-m+1)
+    ])
     return dist_array.min()
         
 
-@njit(parallel=True)
 def _fast_lambda(tss : np.ndarray, pts : np.ndarray) -> float:
     """Wrapper function used in ACTS._calculate_lambda
-    Calculates mean of _dis(ts, pt)^(-1) for every possible ts in tss
-    and pt in pts
+    Calculates mean of _dis(ts, pt) for every possible ts in tss
+    and pt in pts, returns mean^-1
     
     Args
     ----
         - tss : (n_instances, n_timestamps)
             2d array of instances
-        - pts : (n_instances, n_timestamps)
-            2d array of patterns
+        - pts : (n_instances, ), dtype : object
+            array of arrays
     
     Returns
     -------
         - lam : float
             Mean of _dis(ts, pt) between al ts in tss and pt in pts
     """
-    mean = 0.
-    N = tss.shape[0]*pts.shape[0]
-    for i in prange(tss.shape[0]):
-        for j in prange(pts.shape[0]):
-            mean += _dis(tss[i], pts[j])/N
-    lam = 1/mean
-    return lam
-
-
-@njit(parallel=True)
-def _fast_nn(tss: np.ndarray, pts: np.ndarray) -> np.ndarray:
-    # NOTE: If instances and pattens are too many this becomes prohibitive on memory, but its the fastest
-    """Wrapper function used in ACTS.assign_instances.
-    For each ts in tss computes the nearest pt in pts.
-    
-    Args
-    ----
-        - tss : (n_instances, n_timestamps)
-            2d array of instances
-        - pts : (n_instances, n_timestamps)
-            2d array of patterns
-    
-    Returns
-    -------
-        - nn_pt : array (int)
-            Array of integers containing integer index of nn
-            for each instance
-    """
-    distances = np.empty(shape=(tss.shape[0], pts.shape[0]))
-    nn_pt = np.empty(shape=(tss.shape[0], ))
-    for i in prange(tss.shape[0]):
-        for j in prange(pts.shape[0]):
-            distances[i, j] = _dis(tss[i], pts[j])
-    for i in prange(tss.shape[0]):
-        nn_pt[i] = np.argmin(distances[i, :])
-    return nn_pt
+    mean = np.mean(
+        np.array([
+            [ _dis(ts, pt) for pt in pts ]
+            for ts in tss
+        ]).flatten()
+    )
+    return 1./mean
 
 
 class ACTS:
@@ -255,18 +225,19 @@ class ACTS:
             indexes = self.instances[self.instances["near_pt"].isna()].index
         else:
             indexes = self.instances.index
-        patterns_array = np.stack(self.patterns["ts"])
-        int_pattern_idx = _fast_nn(
-            tss=np.stack(self.instances.loc[indexes, "ts"]),
-            pts=patterns_array
-        ).astype("int")
+        patterns_array = self.patterns["ts"].to_numpy(dtype="object")
+        int_pattern_idx = [
+            np.argmin([
+                _dis(ts, pt) for pt in patterns_array 
+            ]).astype("int") 
+            for ts in np.stack(self.instances["ts"])
+        ]    
         self.instances.loc[indexes, "near_pt"] = [
             k(pt) 
             for pt in patterns_array[int_pattern_idx]
         ]
 
     def _assign_patterns(self) -> None:
-        # NOTE: COULD BE FASTER with apply
         """For each pattern, update inst_keys, labels.
         
         - self.patterns.inst_keys : np.array 
@@ -278,45 +249,51 @@ class ACTS:
             nn_instances = self.instances[
                     self.instances["near_pt"] == index
             ]
-            self.patterns.loc[index]["inst_keys"] = np.array(
+            self.patterns.at[index, "inst_keys"] = np.array(
                 nn_instances.index
             )
-            self.patterns.loc[index]["labels"] = nn_instances["label"].to_numpy()
+            self.patterns.at[index, "labels"] = nn_instances["label"].to_numpy()
 
-def _update_patterns(self) -> None:
-    """For each pattern, check if mixed, 
-        if yes, split (delete old pattern, add new ones)
-    """
-    self.patterns["n_unique_labels"] = self.patterns["labels"].apply(
-        lambda x : len(np.unique(x))
-    )
-    mixed_pts = self.patterns[self.patterns["n_unique_labels"]!=1][["inst_keys", "labels"]]
-    #dropping mixed patterns
-    self.patterns = self.patterns.drop(mixed_pts.index)
-    # this will contain the new patterns
-    new_pts = []
-    for _, row in tqdm(mixed_pts.iterrows(), total=mixed_pts.shape[0]):
-        instances = np.stack(self.instances.loc[row["inst_keys"], "ts"])
-        labels = row["labels"]
-        dict_shapelets = grabocka_params_to_shapelet_size_dict(
-            n_ts = instances.shape[0], 
-            ts_sz = instances.shape[1],
-            n_classes = len(np.unique(labels)),
-            l=0.1,
-            r=1
+    def _update_patterns(self) -> None:
+        """For each pattern, check if mixed, 
+            if yes, split (delete old pattern, add new ones)
+        """
+        self.patterns["n_unique_labels"] = self.patterns["labels"].apply(
+            lambda x : len(np.unique(x))
         )
-        model = LearningShapelets(
-            n_shapelets_per_size=dict_shapelets,
-            optimizer=Adam(.01),
-            batch_size=32,
-            weight_regularizer=.01,
-            random_state=0,
-            verbose=0
-        )
-        model.fit(instances, labels)
-        pts = model.shapelets_as_time_series_
-        new_pts += [x for x in pts.reshape((pts.shape[0], pts.shape[1]))]
-   
+        mixed_pts = self.patterns[self.patterns["n_unique_labels"]>1][["inst_keys", "labels"]]
+        empty_pts = self.patterns[self.patterns["n_unique_labels"]==0][["inst_keys", "labels"]]
+        #dropping mixed patterns
+        self.patterns = self.patterns.drop(mixed_pts.index)
+        self.patterns = self.patterns.drop(empty_pts.index)
+        # this will contain the new patterns
+        for _, row in tqdm(mixed_pts.iterrows(), total=mixed_pts.shape[0]):
+            instances = np.stack(self.instances.loc[row["inst_keys"], "ts"])
+            labels = row["labels"]
+            #generating candidates
+            n_labels = len(np.unique(labels))
+            clf = LearningShapelets(random_state=42, tol=0.001)
+            clf.fit(X=instances, y=labels)
+            shapelets_candidates = clf.shapelets_[0]
+            # searching for best candidates
+            best_idxs = np.empty(shape=(n_labels, ), dtype = "int8")
+            for i, l in enumerate(np.unique(labels)):
+                class_instances = instances[np.where(labels==l)]
+                best_idxs[i] = np.argmin(
+                    [
+                        np.mean([
+                            _dis(ts, pt) for ts in class_instances
+                        ])
+                        for pt in shapelets_candidates
+                    ]
+                )                
+            best_shapelets = shapelets_candidates[best_idxs] 
+            # adding best candidates to the total 
+            try:
+                new_pts = np.append(new_pts, [x for x in best_shapelets], axis = 0)
+            except UnboundLocalError:
+                new_pts = np.array([x for x in best_shapelets], dtype = "object")
+        
         #ADD NEW PATTERNS
         self.patterns = self.patterns.append(
             pd.DataFrame({
@@ -335,7 +312,7 @@ def _update_patterns(self) -> None:
         
         Args : see __call__
         """
-        new_keys = np.setdiff1d(Li, self.instances.index)
+        new_keys = np.setdiff1d(Li, self.instances.index, assume_unique=True)
         new_idxs = np.where(
             np.in1d(Li, new_keys, assume_unique=True)
         )
@@ -372,7 +349,7 @@ def _update_patterns(self) -> None:
             DLs = DL[random.sample(range(DL.shape[0]), nsamples_DL)]
             # calculate lambda for samples, take mean
             self.lam += _fast_lambda(tss = np.vstack([Xs, DLs]), 
-                                     pts = np.stack(self.patterns["ts"])
+                                     pts = self.patterns["ts"].to_numpy(dtype="object")
                                     )/N
 
     def _calculate_probx(self, X, pt) -> None:
