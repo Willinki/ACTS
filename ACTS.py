@@ -6,7 +6,9 @@ import pandas as pd
 import numpy as np
 import random
 import math
-from numba import njit, prange
+import warnings
+warnings.filterwarnings("ignore", category=np.VisibleDeprecationWarning) 
+warnings.simplefilter(action='ignore', category=FutureWarning)
 from sklearn.neighbors import NearestNeighbors
 from tqdm import tqdm
 from pyts.classification import LearningShapelets
@@ -171,19 +173,25 @@ class ACTS:
             self._update_instances(DL, L, Li)
             self._assign_instances(empty_only=True)
             self._assign_patterns()
-            self._update_patterns()
+            self._drop_empty_patterns()
+            self._update_patterns_alt()
             self._assign_instances(empty_only=False)
             self._assign_patterns()
+            self._drop_empty_patterns()
+            
         # MODELING
         self.lam = self._calculate_lambda(X, DL)
-        self._calculate_multinomial(DL)
+        self._calculate_multinomial()
         # QUESTION SELECTION
         # STEPS:
         #        compute utility
         #        compute uncertainty
         #        if uncertainty = 0, add the series to the labelled set (is it possible?)[maybe leave it as last...]
         #        calculate Q_informativeness 
-
+        ##############################################ONLY FOR TESTING
+        return self.patterns
+        ##############################################
+        
         if not random_tie_break:
             return _multi_argmax(Q_informativeness, n_instances=n_instances)
 
@@ -230,7 +238,7 @@ class ACTS:
             np.argmin([
                 _dis(ts, pt) for pt in patterns_array 
             ]).astype("int") 
-            for ts in np.stack(self.instances["ts"])
+            for ts in np.stack(self.instances.loc[indexes, "ts"])
         ]    
         self.instances.loc[indexes, "near_pt"] = [
             k(pt) 
@@ -249,23 +257,25 @@ class ACTS:
             nn_instances = self.instances[
                     self.instances["near_pt"] == index
             ]
-            self.patterns.at[index, "inst_keys"] = np.array(
-                nn_instances.index
-            )
+            try:
+                self.patterns.at[index, "inst_keys"] = np.array(
+                    nn_instances.index
+                )
+            except ValueError:
+                print(self.patterns)
+                raise ValueError("THAT THING")
             self.patterns.at[index, "labels"] = nn_instances["label"].to_numpy()
 
     def _update_patterns(self) -> None:
         """For each pattern, check if mixed, 
             if yes, split (delete old pattern, add new ones)
         """
-        self.patterns["n_unique_labels"] = self.patterns["labels"].apply(
+        aux_series = self.patterns["labels"].apply(
             lambda x : len(np.unique(x))
         )
-        mixed_pts = self.patterns[self.patterns["n_unique_labels"]>1][["inst_keys", "labels"]]
-        empty_pts = self.patterns[self.patterns["n_unique_labels"]==0][["inst_keys", "labels"]]
+        mixed_pts = self.patterns[aux_series>1][["inst_keys", "labels"]]
         #dropping mixed patterns
         self.patterns = self.patterns.drop(mixed_pts.index)
-        self.patterns = self.patterns.drop(empty_pts.index)
         # this will contain the new patterns
         for _, row in tqdm(mixed_pts.iterrows(), total=mixed_pts.shape[0]):
             instances = np.stack(self.instances.loc[row["inst_keys"], "ts"])
@@ -290,11 +300,18 @@ class ACTS:
             best_shapelets = shapelets_candidates[best_idxs] 
             # adding best candidates to the total 
             try:
-                new_pts = np.append(new_pts, [x for x in best_shapelets], axis = 0)
+                new_pts.extend(best_shapelets)
             except UnboundLocalError:
-                new_pts = np.array([x for x in best_shapelets], dtype = "object")
+                new_pts = [x for x in best_shapelets]
         
-        #ADD NEW PATTERNS
+        # removing duplicates if there are
+        keys = [k(x) for x in new_pts]
+        keys_set = list(set(keys))
+        if len(keys_set)!=len(keys):
+            aux_dict = {key : ts for key, ts in zip(keys, new_pts)}
+            new_pts = [x for x in aux_dict.values()]
+
+        # ADD NEW PATTERNS
         self.patterns = self.patterns.append(
             pd.DataFrame({
                 "key" : [k(x) for x in new_pts],
@@ -304,8 +321,58 @@ class ACTS:
                 "l_probas" : [np.nan for _ in new_pts]
             }).set_index("key")
         )
-            
 
+    def _update_patterns_alt(self):
+        instances = np.stack(self.instances["ts"])
+        labels = self.instances["label"].to_numpy()
+        n_labels = len(np.unique(labels))
+        clf = LearningShapelets(random_state=42, tol=0.001)
+        clf.fit(X=instances, y=labels)
+        shapelets_candidates = clf.shapelets_[0]
+        # searching for best candidates
+        best_idxs = np.empty(shape=(n_labels, ), dtype = "int8")
+        for i, l in enumerate(np.unique(labels)):
+            class_instances = instances[np.where(labels==l)]
+            best_idxs[i] = np.argmin(
+                [
+                    np.mean([
+                        _dis(ts, pt) for ts in class_instances
+                    ])
+                    for pt in shapelets_candidates
+                ]
+            )                
+        best_shapelets = shapelets_candidates[best_idxs] 
+        # adding best candidates to the total 
+        try:
+            new_pts.extend(best_shapelets)
+        except UnboundLocalError:
+            new_pts = [x for x in best_shapelets]
+        
+        # removing duplicates if there are
+        keys = [k(x) for x in new_pts]
+        keys_set = list(set(keys))
+        if len(keys_set)!=len(keys):
+            aux_dict = {key : ts for key, ts in zip(keys, new_pts)}
+            new_pts = [x for x in aux_dict.values()]
+
+        # ADD NEW PATTERNS
+        self.patterns = pd.DataFrame({
+                "key" : [k(x) for x in new_pts],
+                "ts" : [x for x in new_pts],
+                "inst_keys" : [np.nan for _ in new_pts], 
+                "labels" : [np.nan for _ in new_pts], 
+                "l_probas" : [np.nan for _ in new_pts]
+            }).set_index("key")
+        
+            
+    def _drop_empty_patterns(self) -> None:
+        aux_df = pd.DataFrame(self.patterns["inst_keys"])
+        aux_df["empty_bool"] = aux_df["inst_keys"].apply(lambda x : True if len(x)==0 else False)
+        empty_pat_idxs = aux_df[aux_df["empty_bool"]].index
+        if len(empty_pat_idxs) == 0:
+            return
+        self.patterns = self.patterns.drop(empty_pat_idxs)
+    
     def _update_instances(self, DL, L, Li) -> None:
         """For each element in DL, check if exists in instances
             if not, add to self.istances
