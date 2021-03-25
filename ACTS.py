@@ -2,6 +2,7 @@
 Implementation of the ACTS algorithm as a query strategy for the va_builder framework.
 For any additional information see documentation.
 """
+from numba.npyufunc import parallel
 import pandas as pd
 import numpy as np
 import random
@@ -13,6 +14,9 @@ from sklearn.neighbors import NearestNeighbors
 from tqdm import tqdm
 from pyts.classification import LearningShapelets
 from tensorflow.keras.optimizers import Adam
+from scipy.spatial.distance import euclidean
+from fastdtw import fastdtw
+from numba import njit, prange
 
 def _shuffled_argmax(values: np.ndarray, n_instances: int = 1) -> np.ndarray:
     """
@@ -67,7 +71,29 @@ def k(X: np.ndarray) -> int:
         )
 
 
+@njit(parallel=True)
 def _dis(X: np.ndarray, pt: np.ndarray) -> float:
+    """Given instance and pattern, calculates Dis(X, pt), sliding window.
+    Used in _calculate_probx. 
+    
+    Args
+    ----
+        - X : (array-like) instance
+        - pt : (array-like) pattern
+    """
+    m = len(pt)
+    n = len(X)
+    assert n >= m, "In _dis, a sequence is longer than a pattern"
+    dist_array = np.empty(shape=(n-m+1))
+    for i in prange(0, n-m+1):
+        dist_array[i] = np.linalg.norm(
+                X[i:(i+m)] - pt[:]
+        )/m
+        
+    return dist_array.min()
+
+
+def _dis_o(X: np.ndarray, pt: np.ndarray) -> float:
     """Given instance and pattern, calculates Dis(X, pt), sliding window.
     Used in _calculate_probx. 
     
@@ -86,7 +112,28 @@ def _dis(X: np.ndarray, pt: np.ndarray) -> float:
         for i in range(0, n-m+1)
     ])
     return dist_array.min()
-        
+
+
+def _dis_slow(X: np.ndarray, pt: np.ndarray) -> float:
+    """Given instance and pattern, calculates Dis(X, pt), FASTDTW.
+    Used in _calculate_probx. 
+    
+    Args
+    ----
+        - X : (array-like) instance
+        - pt : (array-like) pattern
+    """
+    m = len(pt)
+    n = len(X)
+    assert n >= m, "In _dis, a sequence is longer than a pattern"
+    dist_array = np.array([
+        fastdtw(
+            X[i:(i+m)], pt[:], 
+            dist=euclidean
+        )[0]/m
+        for i in range(0, n-m+1)
+    ])
+    return dist_array.min()
 
 def _fast_lambda(tss : np.ndarray, pts : np.ndarray) -> float:
     """Wrapper function used in ACTS._calculate_lambda
@@ -258,11 +305,10 @@ class ACTS:
                     self.instances["near_pt"] == index
             ]
             try:
-                self.patterns.at[index, "inst_keys"] = np.array(
-                    nn_instances.index
-                )
+                self.patterns.at[index, "inst_keys"] = nn_instances.index
             except ValueError:
                 print(self.patterns)
+                print(nn_instances.index)
                 raise ValueError("THAT THING")
             self.patterns.at[index, "labels"] = nn_instances["label"].to_numpy()
 
@@ -316,9 +362,9 @@ class ACTS:
             pd.DataFrame({
                 "key" : [k(x) for x in new_pts],
                 "ts" : [x for x in new_pts],
-                "inst_keys" : [np.nan for _ in new_pts], 
-                "labels" : [np.nan for _ in new_pts], 
-                "l_probas" : [np.nan for _ in new_pts]
+                "inst_keys" : [None for _ in new_pts], 
+                "labels" : [None for _ in new_pts], 
+                "l_probas" : [None for _ in new_pts]
             }).set_index("key")
         )
 
@@ -359,9 +405,9 @@ class ACTS:
         self.patterns = pd.DataFrame({
                 "key" : [k(x) for x in new_pts],
                 "ts" : [x for x in new_pts],
-                "inst_keys" : [np.nan for _ in new_pts], 
-                "labels" : [np.nan for _ in new_pts], 
-                "l_probas" : [np.nan for _ in new_pts]
+                "inst_keys" : [None for _ in new_pts], 
+                "labels" : [None for _ in new_pts], 
+                "l_probas" : [None for _ in new_pts]
             }).set_index("key")
         
             
