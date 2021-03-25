@@ -138,7 +138,7 @@ def _dis_o(X: np.ndarray, pt: np.ndarray) -> float:
     return dist_array.min()
 
 
-def _dis_slow(X: np.ndarray, pt: np.ndarray) -> float:
+def _dis_dtw(X: np.ndarray, pt: np.ndarray) -> float:
     """Given instance and pattern, calculates Dis(X, pt), FASTDTW.
     Used in _calculate_probx. 
     
@@ -199,13 +199,28 @@ class ACTS:
         - lam : float
             parameter for exponential distribution 
             
-        - label_set : np.ndarray
-            array of possible label values
+        - tranformer_dict : dict
+            parameters for the learner
+            {
+                penalty : ‘l1’ or ‘l2’ (default = ‘l2’), 
+                tol : float (default = 1e-3), 
+                C : float (default = 1000), 
+                learning_rate : float (default = 1.), 
+                alpha : float (default = -100), 
+                random_state
+            }
     """
-    def __init__(self):
+    def __init__(self, shape_learner_params : dict = None):
         self.patterns = None
         self.instances = None
         self.lam = None
+        if shape_learner_params is None:
+            self.transformer_dict = {
+                "random_state" : 42, 
+                "tol" : 0.001,
+            }
+        else:
+            self.transformer_dict = shape_learner_params
 
     def __call__(self, X: np.ndarray,
                  DL: np.ndarray, 
@@ -305,12 +320,17 @@ class ACTS:
         else:
             indexes = self.instances.index
         patterns_array = self.patterns["ts"].to_numpy(dtype="object")
-        int_pattern_idx = [
-            np.argmin([
-                _dis(ts, pt) for pt in patterns_array 
-            ]).astype("int") 
-            for ts in np.stack(self.instances.loc[indexes, "ts"])
-        ]    
+        try:
+            int_pattern_idx = [
+                np.argmin([
+                    _dis(ts, pt) for pt in patterns_array 
+                ]).astype("int") 
+                for ts in np.stack(self.instances.loc[indexes, "ts"])
+            ]
+        except ValueError:
+            print(patterns_array)
+            print(self.patters)
+            raise ValueError("THAT THING AGAIN")
         self.instances.loc[indexes, "near_pt"] = [
             k(pt) 
             for pt in patterns_array[int_pattern_idx]
@@ -352,12 +372,12 @@ class ACTS:
             labels = row["labels"]
             #generating candidates
             n_labels = len(np.unique(labels))
-            clf = LearningShapelets(random_state=42, tol=0.001)
+            clf = LearningShapelets(**self.transformer_dict)
             clf.fit(X=instances, y=labels)
             shapelets_candidates = clf.shapelets_[0]
             # searching for best candidates
             if n_labels == 2:
-                best_shapelets_idxs = [np.argmax(clf._coef[0]), np.argmin(clf._coef[0])]
+                best_shapelets_idxs = [np.argmax(clf.coef_[0]), np.argmin(clf.coef_[0])]
                 best_shapelets = clf.shapelets_[0, best_shapelets_idxs]
             elif n_labels > 2:
                 best_shapelets_idx = [np.argmax(class_coeff) for class_coeff in clf.coef_]
@@ -394,7 +414,7 @@ class ACTS:
         clf.fit(X=instances, y=labels)
         # searching for best candidates
         if n_labels == 2:
-            best_shapelets_idxs = [np.argmax(clf._coef[0]), np.argmin(clf._coef[0])]
+            best_shapelets_idxs = [np.argmax(clf.coef_[0]), np.argmin(clf.coef_[0])]
             best_shapelets = clf.shapelets_[0, best_shapelets_idxs]
         elif n_labels > 2:
             best_shapelets_idx = [np.argmax(class_coeff) for class_coeff in clf.coef_]
@@ -429,6 +449,7 @@ class ACTS:
         if len(empty_pat_idxs) == 0:
             return
         self.patterns = self.patterns.drop(empty_pat_idxs)
+
     
     def _update_instances(self, DL, L, Li) -> None:
         """For each element in DL, check if exists in instances
@@ -475,6 +496,7 @@ class ACTS:
             self.lam += _fast_lambda(tss = np.vstack([Xs, DLs]), 
                                      pts = self.patterns["ts"].to_numpy(dtype="object")
                                     )/N
+
 
     def _calculate_probx(self, X, pt) -> None:
         """Calculates the value of P(X | pt)
