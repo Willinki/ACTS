@@ -75,6 +75,7 @@ def k(X: np.ndarray) -> int:
 def _dis(X: np.ndarray, pt: np.ndarray) -> float:
     """Given instance and pattern, calculates Dis(X, pt), sliding window.
     Used in _calculate_probx. 
+    Faster
     
     Args
     ----
@@ -88,6 +89,29 @@ def _dis(X: np.ndarray, pt: np.ndarray) -> float:
     for i in prange(0, n-m+1):
         dist_array[i] = np.linalg.norm(
                 X[i:(i+m)] - pt[:]
+        )/m
+        
+    return dist_array.min()
+
+@njit(parallel=True)
+def _dis_rescaled(X: np.ndarray, pt: np.ndarray) -> float:
+    """Given instance and pattern, calculates Dis(X, pt), sliding window.
+    Used in _calculate_probx. 
+    Rescale the data around mean.
+    
+    Args
+    ----
+        - X : (array-like) instance
+        - pt : (array-like) pattern
+    """
+    m = len(pt)
+    n = len(X)
+    assert n >= m, "In _dis, a sequence is longer than a pattern"
+    dist_array = np.empty(shape=(n-m+1))
+    for i in prange(0, n-m+1):
+        dist_array[i] = np.linalg.norm(
+            (X[i:(i+m)] - np.mean(X[i:(i+m)])) - 
+            (pt[:] - np.mean(pt[:]))
         )/m
         
     return dist_array.min()
@@ -332,18 +356,12 @@ class ACTS:
             clf.fit(X=instances, y=labels)
             shapelets_candidates = clf.shapelets_[0]
             # searching for best candidates
-            best_idxs = np.empty(shape=(n_labels, ), dtype = "int8")
-            for i, l in enumerate(np.unique(labels)):
-                class_instances = instances[np.where(labels==l)]
-                best_idxs[i] = np.argmin(
-                    [
-                        np.mean([
-                            _dis(ts, pt) for ts in class_instances
-                        ])
-                        for pt in shapelets_candidates
-                    ]
-                )                
-            best_shapelets = shapelets_candidates[best_idxs] 
+            if n_labels == 2:
+                best_shapelets_idxs = [np.argmax(clf._coef[0]), np.argmin(clf._coef[0])]
+                best_shapelets = clf.shapelets_[0, best_shapelets_idxs]
+            elif n_labels > 2:
+                best_shapelets_idx = [np.argmax(class_coeff) for class_coeff in clf.coef_]
+                best_shapelets = clf.shapelets_[0, best_shapelets_idx]
             # adding best candidates to the total 
             try:
                 new_pts.extend(best_shapelets)
@@ -374,20 +392,13 @@ class ACTS:
         n_labels = len(np.unique(labels))
         clf = LearningShapelets(random_state=42, tol=0.001)
         clf.fit(X=instances, y=labels)
-        shapelets_candidates = clf.shapelets_[0]
         # searching for best candidates
-        best_idxs = np.empty(shape=(n_labels, ), dtype = "int8")
-        for i, l in enumerate(np.unique(labels)):
-            class_instances = instances[np.where(labels==l)]
-            best_idxs[i] = np.argmin(
-                [
-                    np.mean([
-                        _dis(ts, pt) for ts in class_instances
-                    ])
-                    for pt in shapelets_candidates
-                ]
-            )                
-        best_shapelets = shapelets_candidates[best_idxs] 
+        if n_labels == 2:
+            best_shapelets_idxs = [np.argmax(clf._coef[0]), np.argmin(clf._coef[0])]
+            best_shapelets = clf.shapelets_[0, best_shapelets_idxs]
+        elif n_labels > 2:
+            best_shapelets_idx = [np.argmax(class_coeff) for class_coeff in clf.coef_]
+            best_shapelets = clf.shapelets_[0, best_shapelets_idx]
         # adding best candidates to the total 
         try:
             new_pts.extend(best_shapelets)
