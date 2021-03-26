@@ -2,18 +2,22 @@
 Implementation of the ACTS algorithm as a query strategy for the va_builder framework.
 For any additional information see documentation.
 """
+# TODO update calc lambda and calculate probax
+from llvmlite.ir.values import Value
 from numba.npyufunc import parallel
 import pandas as pd
 import numpy as np
 import random
 import math
 import warnings
+from sklearn.base import BaseEstimator
 warnings.filterwarnings("ignore", category=np.VisibleDeprecationWarning) 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 from sklearn.neighbors import NearestNeighbors
+from sklearn.tree import DecisionTreeClassifier
+from sklearn import tree
 from tqdm import tqdm
-from pyts.classification import LearningShapelets
-from tensorflow.keras.optimizers import Adam
+from pyts.transformation import ShapeletTransform
 from scipy.spatial.distance import euclidean
 from fastdtw import fastdtw
 from numba import njit, prange
@@ -67,8 +71,9 @@ def k(X: np.ndarray) -> int:
     Used to assign a key to patterns.
     """
     return hash(
-        round(np.mean(X), 6)
-        )
+        np.mean(X)
+    )
+        
 
 
 @njit(parallel=True)
@@ -159,31 +164,6 @@ def _dis_dtw(X: np.ndarray, pt: np.ndarray) -> float:
     ])
     return dist_array.min()
 
-def _fast_lambda(tss : np.ndarray, pts : np.ndarray) -> float:
-    """Wrapper function used in ACTS._calculate_lambda
-    Calculates mean of _dis(ts, pt) for every possible ts in tss
-    and pt in pts, returns mean^-1
-    
-    Args
-    ----
-        - tss : (n_instances, n_timestamps)
-            2d array of instances
-        - pts : (n_instances, ), dtype : object
-            array of arrays
-    
-    Returns
-    -------
-        - lam : float
-            Mean of _dis(ts, pt) between al ts in tss and pt in pts
-    """
-    mean = np.mean(
-        np.array([
-            [ _dis(ts, pt) for pt in pts ]
-            for ts in tss
-        ]).flatten()
-    )
-    return 1./mean
-
 
 class ACTS:
     """Wrapper class for ACTS query strategy. 
@@ -191,37 +171,33 @@ class ACTS:
     Properties
     ----------
         - patterns: pd.DataFrame
-            cols : key, ts, inst_keys, labels, l_probas
+            cols : key, ts, inst_keys, idx, labels, l_probas, lambda
             
         - instances : pd.Dataframe
             cols : key, ts, label, near_pt
             
         - lam : float
             parameter for exponential distribution 
+        
+        - label_set : np.ndarray
+            Contains the list of possible labels
             
-        - tranformer_dict : dict
-            parameters for the learner
-            {
-                penalty : ‘l1’ or ‘l2’ (default = ‘l2’), 
-                tol : float (default = 1e-3), 
-                C : float (default = 1000), 
-                learning_rate : float (default = 1.), 
-                alpha : float (default = -100), 
-                random_state
-            }
+        - tree : sklearn.classifier
+            DecisionTree used to assign a pattern to each
+            labelled instance
     """
-    def __init__(self, shape_learner_params : dict = None):
+    def __init__(self):
         self.patterns = None
         self.instances = None
         self.lam = None
-        if shape_learner_params is None:
-            self.transformer_dict = {
-                "random_state" : 42, 
-                "tol" : 0.001,
-            }
-        else:
-            self.transformer_dict = shape_learner_params
-
+        self.label_set = None
+        self.transformer = ShapeletTransform(window_sizes=[0.15, 0.30, 0.05])
+        self.tree = DecisionTreeClassifier(
+            criterion="entropy", 
+            splitter="best", 
+            random_state = 44
+        )
+         
     def __call__(self, X: np.ndarray,
                  DL: np.ndarray, 
                  L: np.ndarray, 
@@ -249,24 +225,19 @@ class ACTS:
             The indices of the instances from X chosen to be labelled;
         """
         # MAINTAINING PATTERNS
-        # TODO ADD CHECK_ARRAY TO SET EVERYTHING TO THE RIGHT TYPE AND DIMENSION
         if self.patterns is None:
+            self.label_set = np.unique(L)
             self._initialize_instances(DL, L, Li)
             self._initialize_patterns()
-            self._assign_instances(empty_only=False)
-            self.label_set = np.unique(L)
         else:
             self._update_instances(DL, L, Li)
-            self._assign_instances(empty_only=True)
-            self._assign_patterns()
-            self._drop_empty_patterns()
             self._update_patterns_alt()
-            self._assign_instances(empty_only=False)
+            self._assign_instances()
             self._assign_patterns()
             self._drop_empty_patterns()
             
         # MODELING
-        self.lam = self._calculate_lambda(X, DL)
+        self._calculate_lambdas()
         self._calculate_multinomial()
         # QUESTION SELECTION
         # STEPS:
@@ -290,9 +261,9 @@ class ACTS:
         """
         self.instances = pd.DataFrame({
             "key" : Li,
-            "ts" : [DL[i] for i in range(DL.shape[0])],
+            "ts" : [x for x in DL],
             "label" : L,
-            "near_pt" : [np.nan for _ in L]
+            "near_pt" : [k(x) for x in DL]
         }).set_index("key")
 
     def _initialize_patterns(self) -> None:
@@ -305,37 +276,40 @@ class ACTS:
            "ts" : [inst for inst in inst_values],
            "inst_keys" : [np.array([ind]) for ind in self.instances.index],
            "labels" : [np.array([lab]) for lab in self.instances["label"].to_numpy()],
-           "l_probas" : [np.nan for _ in self.instances.index]
         }).set_index("key")
+        self.patterns["l_probas"] = self.patterns["labels"].apply(
+            lambda x : np.array([
+                len(np.where(x==l)[0]) for l in self.label_set
+                ])/len(x)
+        )
 
-    def _assign_instances(self, empty_only : bool) -> None:
-        """For each instance, update near_pt
-        
-        Args : 
-            empty_only : (bool) if true, only instances with n_pt = np.nan are
-                updated 
+
+    def _calculate_lambdas(self):
+        """For each patterm calculates value of lambda. 
         """
-        if empty_only:
-            indexes = self.instances[self.instances["near_pt"].isna()].index
-        else:
-            indexes = self.instances.index
-        patterns_array = self.patterns["ts"].to_numpy(dtype="object")
-        try:
-            int_pattern_idx = [
-                np.argmin([
-                    _dis(ts, pt) for pt in patterns_array 
-                ]).astype("int") 
-                for ts in np.stack(self.instances.loc[indexes, "ts"])
-            ]
-        except ValueError:
-            print(patterns_array)
-            print(self.patters)
-            raise ValueError("THAT THING AGAIN")
-        self.instances.loc[indexes, "near_pt"] = [
-            k(pt) 
-            for pt in patterns_array[int_pattern_idx]
-        ]
-
+        for index, row in self.patterns.iterrows():
+            instances = np.stack(
+                self.instances.loc[row["inst_keys"], "ts"]
+            )
+            self.patterns.at[index, "lambda"] = 1/np.mean(
+                [
+                    _dis(ts, row["ts"]) 
+                    for ts in instances 
+                ]
+            )
+            if self.patterns.at[index, "lambda"] == np.inf:
+                self.patterns.at[index, "lambda"] = 0
+            
+        
+    def _assign_instances(self) -> None:
+        """For each instance, update near_pt by consulting the tree
+        """
+        instances_np = np.stack(self.instances["ts"])
+        inst_transformed = self.transformer.transform(instances_np)
+        key_inst = self.run_tree(X = inst_transformed)
+        self.instances["near_pt"] = key_inst
+        
+        
     def _assign_patterns(self) -> None:
         """For each pattern, update inst_keys, labels.
         
@@ -348,112 +322,49 @@ class ACTS:
             nn_instances = self.instances[
                     self.instances["near_pt"] == index
             ]
-            try:
-                self.patterns.at[index, "inst_keys"] = nn_instances.index
-            except ValueError:
-                print(self.patterns)
-                print(nn_instances.index)
-                raise ValueError("THAT THING")
+            self.patterns.at[index, "inst_keys"] = np.array(nn_instances.index)
             self.patterns.at[index, "labels"] = nn_instances["label"].to_numpy()
-
-    def _update_patterns(self) -> None:
-        """For each pattern, check if mixed, 
-            if yes, split (delete old pattern, add new ones)
-        """
-        aux_series = self.patterns["labels"].apply(
-            lambda x : len(np.unique(x))
-        )
-        mixed_pts = self.patterns[aux_series>1][["inst_keys", "labels"]]
-        #dropping mixed patterns
-        self.patterns = self.patterns.drop(mixed_pts.index)
-        # this will contain the new patterns
-        for _, row in tqdm(mixed_pts.iterrows(), total=mixed_pts.shape[0]):
-            instances = np.stack(self.instances.loc[row["inst_keys"], "ts"])
-            labels = row["labels"]
-            #generating candidates
-            n_labels = len(np.unique(labels))
-            clf = LearningShapelets(**self.transformer_dict)
-            clf.fit(X=instances, y=labels)
-            shapelets_candidates = clf.shapelets_[0]
-            # searching for best candidates
-            if n_labels == 2:
-                best_shapelets_idxs = [np.argmax(clf.coef_[0]), np.argmin(clf.coef_[0])]
-                best_shapelets = clf.shapelets_[0, best_shapelets_idxs]
-            elif n_labels > 2:
-                best_shapelets_idx = [np.argmax(class_coeff) for class_coeff in clf.coef_]
-                best_shapelets = clf.shapelets_[0, best_shapelets_idx]
-            # adding best candidates to the total 
-            try:
-                new_pts.extend(best_shapelets)
-            except UnboundLocalError:
-                new_pts = [x for x in best_shapelets]
-        
-        # removing duplicates if there are
-        keys = [k(x) for x in new_pts]
-        keys_set = list(set(keys))
-        if len(keys_set)!=len(keys):
-            aux_dict = {key : ts for key, ts in zip(keys, new_pts)}
-            new_pts = [x for x in aux_dict.values()]
-
-        # ADD NEW PATTERNS
-        self.patterns = self.patterns.append(
-            pd.DataFrame({
-                "key" : [k(x) for x in new_pts],
-                "ts" : [x for x in new_pts],
-                "inst_keys" : [None for _ in new_pts], 
-                "labels" : [None for _ in new_pts], 
-                "l_probas" : [None for _ in new_pts]
-            }).set_index("key")
-        )
+            
 
     def _update_patterns_alt(self):
         instances = np.stack(self.instances["ts"])
         labels = self.instances["label"].to_numpy()
-        n_labels = len(np.unique(labels))
-        clf = LearningShapelets(random_state=42, tol=0.001)
-        clf.fit(X=instances, y=labels)
-        # searching for best candidates
-        if n_labels == 2:
-            best_shapelets_idxs = [np.argmax(clf.coef_[0]), np.argmin(clf.coef_[0])]
-            best_shapelets = clf.shapelets_[0, best_shapelets_idxs]
-        elif n_labels > 2:
-            best_shapelets_idx = [np.argmax(class_coeff) for class_coeff in clf.coef_]
-            best_shapelets = clf.shapelets_[0, best_shapelets_idx]
-        # adding best candidates to the total 
-        try:
-            new_pts.extend(best_shapelets)
-        except UnboundLocalError:
-            new_pts = [x for x in best_shapelets]
         
-        # removing duplicates if there are
-        keys = [k(x) for x in new_pts]
-        keys_set = list(set(keys))
-        if len(keys_set)!=len(keys):
-            aux_dict = {key : ts for key, ts in zip(keys, new_pts)}
-            new_pts = [x for x in aux_dict.values()]
-
+        # transforming instances with shapelet
+        inst_trmd = self.transformer.fit_transform(X=instances, y=labels)
+        
+        # extracting shapelets
+        shapelets = self.transformer.shapelets_
+        
+        # training decision tree
+        self.tree.fit(inst_trmd, labels)
+        
         # ADD NEW PATTERNS
-        self.patterns = pd.DataFrame({
-                "key" : [k(x) for x in new_pts],
-                "ts" : [x for x in new_pts],
-                "inst_keys" : [None for _ in new_pts], 
-                "labels" : [None for _ in new_pts], 
-                "l_probas" : [None for _ in new_pts]
-            }).set_index("key")
+        self.patterns = (
+            pd.DataFrame({
+                "key" : [k(x) for x in shapelets],
+                "ts" : [x for x in shapelets],
+                "idx" : [i for i in range(shapelets.shape[0])],
+                "inst_keys" : [np.array([]) for _ in shapelets], 
+                "labels" : [np.array([]) for _ in shapelets], 
+                "l_probas" : [np.array([]) for _ in shapelets]
+            }).drop_duplicates('key')
+              .set_index('key')
+        )
         
             
     def _drop_empty_patterns(self) -> None:
+        """Pretty self explanatory
+        """
         aux_df = pd.DataFrame(self.patterns["inst_keys"])
         aux_df["empty_bool"] = aux_df["inst_keys"].apply(lambda x : True if len(x)==0 else False)
         empty_pat_idxs = aux_df[aux_df["empty_bool"]].index
-        if len(empty_pat_idxs) == 0:
-            return
         self.patterns = self.patterns.drop(empty_pat_idxs)
 
     
     def _update_instances(self, DL, L, Li) -> None:
         """For each element in DL, check if exists in instances
-            if not, add to self.istances
+            if not, add to self.instances
         
         Args : see __call__
         """
@@ -471,33 +382,6 @@ class ACTS:
         )
 
 
-    def _calculate_lambda(self, X : np.ndarray, DL : np.ndarray, 
-                          sample_size : float = 0.01, N : int = 50) -> None:
-        """Calculates the value of self.lam, used in P(X | pt)
-        
-        Args
-        ----
-            - X : (shape = (n_instances, n_timestamps)
-                Dataset of unlabelled instances
-            - DL : (shape = (n_instances, n_timestamps)
-                Dataset of labelled instances
-        """
-        self.lam = 0
-        # prepare stratified sampling
-        tot_samples = (DL.shape[0] + X.shape[0])*sample_size
-        ratio = X.shape[0] / (X.shape[0] + DL.shape[0])
-        nsamples_DL = math.ceil(tot_samples*(1-ratio))
-        nsamples_X = math.ceil(tot_samples*ratio)
-        for _ in range(N):
-            # take samples
-            Xs = X[random.sample(range(X.shape[0]), nsamples_X)]
-            DLs = DL[random.sample(range(DL.shape[0]), nsamples_DL)]
-            # calculate lambda for samples, take mean
-            self.lam += _fast_lambda(tss = np.vstack([Xs, DLs]), 
-                                     pts = self.patterns["ts"].to_numpy(dtype="object")
-                                    )/N
-
-
     def _calculate_probx(self, X, pt) -> None:
         """Calculates the value of P(X | pt)
         
@@ -507,6 +391,33 @@ class ACTS:
             - pt : (array-like) pattern
         """
         return math.exp(-self.lam*_dis(X, pt))
+
+    
+    def run_tree(self, X : np.ndarray):
+        """Given the transformed instances in X, returns the pattern keys 
+        they are assigned to.
+        """
+        estimator = self.tree
+        # tree structure
+        feature = estimator.tree_.feature
+        node_indicator = estimator.decision_path(X)
+        leave_id = estimator.apply(X)
+        # this will contain, for each instance, the feature used 
+        # by transformer in the last decision node
+        patterns = np.zeros(shape=(X.shape[0], 2), dtype=int)
+        pt_keys = []
+        for sample_id in range(X.shape[0]):
+            node_index = node_indicator.indices[node_indicator.indptr[sample_id]:
+                                                node_indicator.indptr[sample_id + 1]]
+
+            patterns[sample_id, :] = sample_id, feature[node_index[-2]]
+        for idx in patterns[:, 1]:
+            pt_key = self.patterns[self.patterns["idx"] == idx].index
+            assert len(pt_key) <= 1, "see here, pt_keys contains more than one pattern"
+            pt_key = pt_key[0]
+            pt_keys.append(pt_key)
+        return pt_keys
+            
 
 
     def _calculate_multinomial(self) -> None:
