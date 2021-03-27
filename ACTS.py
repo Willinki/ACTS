@@ -2,7 +2,6 @@
 Implementation of the ACTS algorithm as a query strategy for the va_builder framework.
 For any additional information see documentation.
 """
-# TODO update calc lambda and calculate probax
 from llvmlite.ir.values import Value
 from numba.npyufunc import parallel
 import pandas as pd
@@ -175,9 +174,6 @@ class ACTS:
             
         - instances : pd.Dataframe
             cols : key, ts, label, near_pt
-            
-        - lam : float
-            parameter for exponential distribution 
         
         - label_set : np.ndarray
             Contains the list of possible labels
@@ -390,7 +386,8 @@ class ACTS:
             - X : (array-like) instance
             - pt : (array-like) pattern
         """
-        return math.exp(-self.lam*_dis(X, pt))
+        lam = self.patterns.at[k(pt), "lambda"]
+        return math.exp(-lam*_dis(X, pt))
 
     
     def run_tree(self, X : np.ndarray):
