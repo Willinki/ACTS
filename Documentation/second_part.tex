@@ -1,0 +1,58 @@
+\section{Second part}
+The second part of the algorithm aims at calculating, for each unlabelled instance,
+its \textbf{uncertainty} and \textbf{utility}.
+
+First we'll define some thing that we have until now:
+\begin{itemize}
+    \item Instances. The labelled examples until now, we'll refer to these instances as $Y_i$, they are
+    contained inside $D_L$, each one of these instances has a label and an index, we'll refer to these as 
+    $Y_i.l$, $Y_i.i$. Also, each instance is assigned to a pattern, we'll refer to this patterns as $Y_i.pt$.
+    \item Patterns (or shapelets). Short subsequences that represents part of the instances, each instance is 
+    assigned to a pattern. Each pattern has its own $\lambda$ parameter, which is used to calculate the
+    quantity $P(Y | pt)$. Also, each parameter has its own $P(pt|y = l)$ for each $l$ inside the possible labels.
+    \item Unlabelled instances. We'll refer to these as $X_i$, contained inside $D_U$.
+    \item We also have a distance function between time series, or time series and patterns: \texttt{\_dis(Y, X)}.
+    \item We also have a \textbf{label set} $L$, i.e. the list of all possible labels inside the dataset. 
+    If the classification is binary the label set will be $L = \{0, 1\}$, for example.
+\end{itemize}
+
+\subsection{Uncertainty calculation}
+The first quantity we have to measure is the uncertainty related to an instance $X \in D_U$.
+
+The steps are: \textbf{for each instance X}:
+\begin{itemize}
+    \item Calculate its k-nearest neighbors in $D_L$. We'll refer to these as 
+    $\{Y_j\}_{j\in 1\dots k}$, so ${Y_1, \dots, Y_k}$ where $Y_1$ is the closest instance and $Y_k$ the 
+    farthest of the k\-nn.
+    From this, we also need to retrieve the following quantities:
+    \begin{equation}
+        d_1 = dis(X, Y_1) 
+    \end{equation}
+    \begin{equation}
+        d_k = dis(X, Y_k) 
+    \end{equation}
+
+    \item  Calculate, for all possible $l \in L$ the quantity:
+    \begin{equation}
+        \bar{P}(y = l | X) = \sum_{Y_j \in \{Y_1, \dots, Y_k\}} P(X | Y_j.pt) \cdot P(Y_j.pt | y = l)
+    \end{equation}
+    Where the both term are available: the function \texttt{calculate\_probax(X, pt)} calculates the 
+    first part, while the second term is contained in the \texttt{l\_probas} column of the 
+    \textit{patterns} dataframe. It is an array where the first entry is $P(Y_j.pt | y = 1)$ and 
+    so on for each possible label.
+    \item Then we calculate the normalizer:
+    \begin{equation}
+        Z = \sum_{l \in L} \bar{P}(y = l | X)
+    \end{equation}
+    \item Then we normalize the quantities we just calculated with $Z$, obtaining:
+    \begin{equation}
+        \hat{P}(y = l | X) = \frac{1}{Z}  \bar{P}(y = l | X)
+    \end{equation}
+    \item Then finally we calculate the uncertainty for the unlabelled instance $X$:
+    \begin{equation}
+        Uncr(X) = \sum_{l \in L} \hat{P}(y = l | X) \log \left( 
+                \hat{P}(y = l | X)
+        \right) \frac{d_1}{d_k}
+    \end{equation}
+\end{itemize}
+
