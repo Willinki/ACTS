@@ -35,6 +35,7 @@ The steps are: \textbf{for each instance X}:
     \item  Calculate, for all possible $l \in L$ the quantity:
     \begin{equation}
         \bar{P}(y = l | X) = \sum_{Y_j \in \{Y_1, \dots, Y_k\}} P(X | Y_j.pt) \cdot P(Y_j.pt | y = l)
+        \label{eq:eq_utile}
     \end{equation}
     Where the both term are available: the function \texttt{calculate\_probax(X, pt)} calculates the 
     first part, while the second term is contained in the \texttt{l\_probas} column of the 
@@ -55,4 +56,135 @@ The steps are: \textbf{for each instance X}:
         \right) \frac{d_1}{d_k}
     \end{equation}
 \end{itemize}
+
+\subsection{Utility calculation}
+The utility needs to be calculated for each instance $X_i \in D_u$, but needs the so called 
+\textit{reverse nearest neighbors} of X, which are the instances $\{Y_1, \dots, Y_n\}$, 
+that have $X_i$ as a k nearest neighbor.
+
+To do this:
+\begin{itemize}
+    \item We calculate, for each instance $Y_i \in D_L$, it's k nearest neighbors in $D_U$.
+    \item For each instance $X \in D_U$, we check all the instances $Y_j \in D_L$ that have $X_i$ 
+    as a knn
+\end{itemize}
+
+This way we obtain the set of reverse nearest neighbors of $X_i$, which we'll call $RN(X_i)$. 
+We'll identify the instances in this set with $\{Y_1 , \dots, Y_k\}$.
+
+Now, we calculate the following quantities:
+\begin{equation}
+    dis(X_i, Y_j) 
+    \, \, \, \, \, \, \,\,   \, \, 
+    \text{for } Y_j \in RN(X_i)
+\end{equation}
+
+Of which we'll calculate:
+\begin{equation}
+    mDis(X_i) = \max_j dis(X_i, Y_j) 
+    \, \, \, \, \, \, \,\,   \, \, 
+    \text{for } Y_j \in RN(X_i)
+\end{equation}
+
+And then:
+\begin{align}
+    SimD(X_i, Y_j) = 1 - \frac{
+        dis(X_i, Y_j)
+    }{
+        mDis(X_i)
+    } 
+    \, \, \, \, \, \, \,\,   \, \, 
+    \text{for } Y_j \in RN(X_i)
+\end{align}
+
+Now the first part of the utility is done, we have to calculate the second part.
+
+To do this, we'll calculate the nearest neighbors of $X_i$ in $D_L$.
+We'll refer to these as $\{Y_1, \dots, Y_k\} \in LN(X_i)$.
+
+Now, we have to calculate the follwing quantity for each possible pattern:
+\begin{equation}
+    \Psi(X_i, pt) = \sum_{Y_j \in LN(X_i)} P(X_i | Y_j.pt) I(Y_j.pt = pt)
+    \, \, \, \, \, \, \,\,   \, \, 
+    \text{for } pt \in patterns
+\end{equation}
+
+Where the first term is the same of Equation \ref{eq:eq_utile} first part, so available 
+with the function \texttt{calculate\_probax(X, pt)}, where pt will be the pattern
+assigned to $Y_j$.
+
+The second part, on the other hand is defined as follows:
+\begin{equation}
+    I(Y_j.pt = pt)
+    \begin{cases}
+        0 & \text{if } Y_j.pt \text{ is not the same as } pt \\
+        1 & \text{if } Y_j.pt \text{ is the same as } pt
+    \end{cases}
+\end{equation}
+
+For the values of $\Psi(X_i, pt)$ calculated for each pt, we calculate:
+\begin{equation}
+    Z(X_i|PT) = \sum_{pt} \Psi(X_i, pt)
+\end{equation}
+
+Now we have that:
+\begin{equation}
+    P(X_i | pt) = Z(X_i|PT)^{-1} \Psi(X_i, pt)
+\end{equation}
+
+This element is the basic element for the calculation of the utility, it must be
+defined also for a labelled instance $Y_i \in D_L$, so, to calculate it:
+\begin{itemize}
+    \item Find the knn of $Y_j$ in $D_L$, which will be referred to as $LN(Y_j)$.
+    \item Calculate:
+    \begin{align}
+        \Psi(Y_j, pt) = \sum_{Y_k \in LN(Y_j)} P(Y_j | Y_k.pt) I(Y_j.pt = pt)
+        \, \, \, \, \, \, 
+        \text{for all } pt \in patterns 
+    \end{align}
+    \item Calculate:
+    \begin{equation}
+        Z(Y_j | PT) = \sum_{pt} \Psi(Y_j, pt)
+    \end{equation}
+    \item Calculate:
+    \begin{equation}
+        P(Y_j | pt) = Z(Y_j |PT )^{-1} \Psi(Y_j, pt)
+    \end{equation}
+\end{itemize}
+
+Now, let suppose that all the possible patterns are $[pt_1, pt_2, \dots, pt_n]$, 
+we define the following arrays as:
+\begin{align}
+    P(X_i | PT) &= \left[ P(X_i | pt_1), \dots, P(X_i | pt_n) \right]\\
+    P(Y_j | PT) &= \left[ P(Y_j | pt_1), \dots, P(Y_j | pt_n) \right] 
+\end{align}
+
+And we introduce the following quantity:
+\begin{equation}
+    SimP(X_i, Y_j) = 1 - JSD(P(X_i | PT), P(Y_i | PT))
+\end{equation}
+
+Where JSD is the Jensen Shannon Distance between the arrays, available 
+in \texttt{scipy}.
+
+Then:
+\begin{equation}
+    Sim(X_i, Y_j) = SimD(X_i, Y_j) \cdot SimP(X_i, Y_j)
+\end{equation}
+
+Lastly, once we defined everything, and remembering that $RN(X_i)$ is the set of reverse
+k nearest neighbors in $D_L$ of $X_i \in D_U$, we define the utility of an instance
+\begin{equation}
+    Uti(X_i) = \sum_{Y_j \in RN(X_i)} Sim(X_i, Y_j)
+\end{equation}
+
+And its question informativeness:
+\begin{equation}
+    QI(X_i) = Uti(X_i) + Uncr(X_i)
+\end{equation}
+
+We select the n most informative instances to query.
+
+
+
 
