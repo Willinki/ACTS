@@ -368,20 +368,28 @@ class ACTS:
         # pattern_key = self.instances.get_value(<index_of_X'>, "near_pt")
         # then -->
         # X.pt = self.patterns.get_value(pattern_key, "ts")
-        LN_Ks = NearestNeighbors(n_neighbors=k, algorithm='ball_tree').fit(X)
-        z = len(LN_Ks)
-        for i in range(len(LN_Ks)):
-            x_current = LN_Ks[i]
-            sum += (1 / z) * self._calculate_probx(X, x_current) * self._calculate_multinomial()
-        post_prob = sum
+        Y = []
+        for i in X:
+            Y[i] = NearestNeighbors(n_neighbors=k,algorithm='ball_tree').fit(X)
+        distance_1 = _dis(X, Y[0])
+        distance_k = _dis(X, Y[-1:])
+
+        probability = 0
+        for i in Y:
+            probability += self._calculate_probx(X, Y[i])*self.patterns["l_probas"]
+
+        normalizer = np.average(probability)
+
+        normalized_probability = (1/normalizer)*probability
+
+        return normalized_probability*np.log(normalized_probability)*(distance_1/distance_k)
 
     def _calculate_uti(self, DU):
         """
         Calculate utility based on a set of questions and an unlabeled dataset.
-
         Args:
             DU:
 
         Returns:
-
         """
+        
