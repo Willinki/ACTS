@@ -431,7 +431,6 @@ class ACTS:
             ])/len(x)
         )
 
-
     def _calculate_uncr(self, DL, X, L, k):
         """ Find X's k-nearest neighbours LN_Ks(X)
         Estimate posterior P(y = l|X) from training set
