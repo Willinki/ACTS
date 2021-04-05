@@ -431,7 +431,7 @@ class ACTS:
             ])/len(x)
         )
 
-    def _calculate_uncr(self, DL, X, L, k):
+    def _calculate_uncr(self, DL, X, L, k_max):
         """ Find X's k-nearest neighbours LN_Ks(X)
         Estimate posterior P(y = l|X) from training set
         Use to set into summation equation.
@@ -441,28 +441,62 @@ class ACTS:
         # pattern_key = self.instances.get_value(<index_of_X'>, "near_pt")
         # then -->
         # X.pt = self.patterns.get_value(pattern_key, "ts")
-        Y = []
-        for i in X:
-            Y[i] = NearestNeighbors(n_neighbors=k,algorithm='ball_tree').fit(X)
-        distance_1 = _dis(X, Y[0])
-        distance_k = _dis(X, Y[-1:])
 
-        probability = 0
-        for i in Y:
-            probability += self._calculate_probx(X, Y[i])*self.patterns["l_probas"]
+        # CALCULATE Y NEIGHBOURS TO X
+        Y_neighbours = NearestNeighbors.kneighbors(X=X, n_neighbors=k_max, return_distance=False)
 
-        normalizer = np.average(probability)
+        # CALCULATE DISTANCES 1 AND K
+        d1 = _dis(X, Y_neighbours[0])
+        dk = _dis(X, Y_neighbours[-1:])
 
-        normalized_probability = (1/normalizer)*probability
+        # FOR ALL POSSIBLE LABELS, CALCULATE PROBABILITY
+        prob = 0
+        for i in range(len(self.patterns["l_probas"])):
+            pattern_key = self.instances.get_value(Y_neighbours[i], "near_pt")
+            Y_pt = self.patterns.get_value(pattern_key, "ts")
+            prob += self._calculate_probx(X, Y_pt)*self.patterns["l_probas"][i]
 
-        return normalized_probability*np.log(normalized_probability)*(distance_1/distance_k)
+        normalizer = np.average(prob) # NOT SURE OF
 
-    def _calculate_uti(self, DU):
+        normalized_probability = (1/normalizer)*prob
+
+        return normalized_probability*np.log(normalized_probability)*(d1/dk)
+
+    def _calculate_uti(self, DU, DL, k_max):
         """
         Calculate utility based on a set of questions and an unlabeled dataset.
         Args:
             DU:
-
         Returns:
         """
-        
+        # CALCULATE NEAREST NEIGHBOURS
+        near_neighbours = []
+        for Y in DL:
+            nn = NearestNeighbors.kneighbors(X=Y, n_neighbors=k_max, return_distance=False)
+            near_neighbours.append(nn)
+
+        # REVERSE NEIGHBOURS
+        rn = []
+        for X in DU:
+            if X in near_neighbours:
+               rn.append(X)
+
+        # DISTANCES
+        distances = []
+        for i,Y in rn:
+            dist = _dis_o(rn[i], Y)
+            distances.append(dist)
+
+        # CALCULATE MAX DISTANCE
+        max_dist = []
+        for i,Y in rn:
+            maxd = max(_dis(rn[i], Y))
+            max_dist.append(maxd)
+
+        # -------
+        simD = []
+        for i in rn:
+            sim = 1 - (distances[i]/max_dist[i])
+
+        # 
+
