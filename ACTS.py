@@ -10,7 +10,8 @@ import random
 import math
 import warnings
 from sklearn.base import BaseEstimator
-warnings.filterwarnings("ignore", category=np.VisibleDeprecationWarning) 
+
+warnings.filterwarnings("ignore", category=np.VisibleDeprecationWarning)
 warnings.simplefilter(action='ignore', category=FutureWarning)
 from sklearn.neighbors import NearestNeighbors
 from sklearn.tree import DecisionTreeClassifier
@@ -20,6 +21,7 @@ from pyts.transformation import ShapeletTransform
 from scipy.spatial.distance import euclidean
 from fastdtw import fastdtw
 from numba import njit, prange
+
 
 def _shuffled_argmax(values: np.ndarray, n_instances: int = 1) -> np.ndarray:
     """
@@ -41,7 +43,7 @@ def _shuffled_argmax(values: np.ndarray, n_instances: int = 1) -> np.ndarray:
 
     # getting the n_instances best instance
     # since mergesort is used, the shuffled order is preserved
-    sorted_query_idx = np.argsort(shuffled_values, kind='mergesort')[len(shuffled_values)-n_instances:]
+    sorted_query_idx = np.argsort(shuffled_values, kind='mergesort')[len(shuffled_values) - n_instances:]
 
     # inverting the shuffle
     query_idx = shuffled_idx[sorted_query_idx]
@@ -60,7 +62,7 @@ def _multi_argmax(values: np.ndarray, n_instances: int = 1) -> np.ndarray:
     """
     assert n_instances <= values.shape[0], 'n_instances must be less or equal than the size of utility'
 
-    max_idx = np.argpartition(-values, n_instances-1, axis=0)[:n_instances]
+    max_idx = np.argpartition(-values, n_instances - 1, axis=0)[:n_instances]
     return max_idx
 
 
@@ -72,7 +74,6 @@ def k(X: np.ndarray) -> int:
     return hash(
         np.mean(X)
     )
-        
 
 
 @njit(parallel=True)
@@ -89,13 +90,14 @@ def _dis(X: np.ndarray, pt: np.ndarray) -> float:
     m = len(pt)
     n = len(X)
     assert n >= m, "In _dis, a sequence is longer than a pattern"
-    dist_array = np.empty(shape=(n-m+1))
-    for i in prange(0, n-m+1):
+    dist_array = np.empty(shape=(n - m + 1))
+    for i in prange(0, n - m + 1):
         dist_array[i] = np.linalg.norm(
-                X[i:(i+m)] - pt[:]
-        )/m
-        
+            X[i:(i + m)] - pt[:]
+        ) / m
+
     return dist_array.min()
+
 
 @njit(parallel=True)
 def _dis_rescaled(X: np.ndarray, pt: np.ndarray) -> float:
@@ -111,13 +113,13 @@ def _dis_rescaled(X: np.ndarray, pt: np.ndarray) -> float:
     m = len(pt)
     n = len(X)
     assert n >= m, "In _dis, a sequence is longer than a pattern"
-    dist_array = np.empty(shape=(n-m+1))
-    for i in prange(0, n-m+1):
+    dist_array = np.empty(shape=(n - m + 1))
+    for i in prange(0, n - m + 1):
         dist_array[i] = np.linalg.norm(
-            (X[i:(i+m)] - np.mean(X[i:(i+m)])) - 
+            (X[i:(i + m)] - np.mean(X[i:(i + m)])) -
             (pt[:] - np.mean(pt[:]))
-        )/m
-        
+        ) / m
+
     return dist_array.min()
 
 
@@ -135,9 +137,9 @@ def _dis_o(X: np.ndarray, pt: np.ndarray) -> float:
     assert n >= m, "In _dis, a sequence is longer than a pattern"
     dist_array = np.array([
         np.linalg.norm(
-            X[i:(i+m)] - pt[:]
-        )/m
-        for i in range(0, n-m+1)
+            X[i:(i + m)] - pt[:]
+        ) / m
+        for i in range(0, n - m + 1)
     ])
     return dist_array.min()
 
@@ -156,10 +158,10 @@ def _dis_dtw(X: np.ndarray, pt: np.ndarray) -> float:
     assert n >= m, "In _dis, a sequence is longer than a pattern"
     dist_array = np.array([
         fastdtw(
-            X[i:(i+m)], pt[:], 
+            X[i:(i + m)], pt[:],
             dist=euclidean
-        )[0]/m
-        for i in range(0, n-m+1)
+        )[0] / m
+        for i in range(0, n - m + 1)
     ])
     return dist_array.min()
 
@@ -182,6 +184,7 @@ class ACTS:
             DecisionTree used to assign a pattern to each
             labelled instance
     """
+
     def __init__(self):
         self.patterns = None
         self.instances = None
@@ -189,18 +192,18 @@ class ACTS:
         self.label_set = None
         self.transformer = ShapeletTransform(window_sizes=[0.15, 0.30, 0.05])
         self.tree = DecisionTreeClassifier(
-            criterion="entropy", 
-            splitter="best", 
-            random_state = 44
+            criterion="entropy",
+            splitter="best",
+            random_state=44
         )
-         
+
     def __call__(self, X: np.ndarray,
-                 DL: np.ndarray, 
-                 L: np.ndarray, 
-                 Li: np.ndarray, 
-                 n_instances: int = 1, 
+                 DL: np.ndarray,
+                 L: np.ndarray,
+                 Li: np.ndarray,
+                 n_instances: int = 1,
                  random_tie_break: bool = False,
-                 **uncertainty_measure_kwargs) -> np.ndarray :
+                 **uncertainty_measure_kwargs) -> np.ndarray:
         """Sampling based on the measures defined by ACTS.
         
         Args
@@ -231,7 +234,7 @@ class ACTS:
             self._assign_instances()
             self._assign_patterns()
             self._drop_empty_patterns()
-            
+
         # MODELING
         self._calculate_lambdas()
         self._calculate_multinomial()
@@ -244,7 +247,7 @@ class ACTS:
         ##############################################ONLY FOR TESTING
         return self.patterns
         ##############################################
-        
+
         if not random_tie_break:
             return _multi_argmax(Q_informativeness, n_instances=n_instances)
 
@@ -256,10 +259,10 @@ class ACTS:
         Args : see __call__
         """
         self.instances = pd.DataFrame({
-            "key" : Li,
-            "ts" : [x for x in DL],
-            "label" : L,
-            "near_pt" : [k(x) for x in DL]
+            "key": Li,
+            "ts": [x for x in DL],
+            "label": L,
+            "near_pt": [k(x) for x in DL]
         }).set_index("key")
 
     def _initialize_patterns(self) -> None:
@@ -268,17 +271,16 @@ class ACTS:
         # key, ts, inst_keys, labels, l_probas
         inst_values = self.instances["ts"].to_numpy()
         self.patterns = pd.DataFrame({
-           "key" : [k(inst) for inst in inst_values],
-           "ts" : [inst for inst in inst_values],
-           "inst_keys" : [np.array([ind]) for ind in self.instances.index],
-           "labels" : [np.array([lab]) for lab in self.instances["label"].to_numpy()],
+            "key": [k(inst) for inst in inst_values],
+            "ts": [inst for inst in inst_values],
+            "inst_keys": [np.array([ind]) for ind in self.instances.index],
+            "labels": [np.array([lab]) for lab in self.instances["label"].to_numpy()],
         }).set_index("key")
         self.patterns["l_probas"] = self.patterns["labels"].apply(
-            lambda x : np.array([
-                len(np.where(x==l)[0]) for l in self.label_set
-                ])/len(x)
+            lambda x: np.array([
+                len(np.where(x == l)[0]) for l in self.label_set
+            ]) / len(x)
         )
-
 
     def _calculate_lambdas(self):
         """For each patterm calculates value of lambda. 
@@ -287,25 +289,23 @@ class ACTS:
             instances = np.stack(
                 self.instances.loc[row["inst_keys"], "ts"]
             )
-            self.patterns.at[index, "lambda"] = 1/np.mean(
+            self.patterns.at[index, "lambda"] = 1 / np.mean(
                 [
-                    _dis(ts, row["ts"]) 
-                    for ts in instances 
+                    _dis(ts, row["ts"])
+                    for ts in instances
                 ]
             )
             if self.patterns.at[index, "lambda"] == np.inf:
                 self.patterns.at[index, "lambda"] = 0
-            
-        
+
     def _assign_instances(self) -> None:
         """For each instance, update near_pt by consulting the tree
         """
         instances_np = np.stack(self.instances["ts"])
         inst_transformed = self.transformer.transform(instances_np)
-        key_inst = self.run_tree(X = inst_transformed)
+        key_inst = self.run_tree(X=inst_transformed)
         self.instances["near_pt"] = key_inst
-        
-        
+
     def _assign_patterns(self) -> None:
         """For each pattern, update inst_keys, labels.
         
@@ -316,48 +316,45 @@ class ACTS:
         """
         for index, _ in self.patterns.iterrows():
             nn_instances = self.instances[
-                    self.instances["near_pt"] == index
-            ]
+                self.instances["near_pt"] == index
+                ]
             self.patterns.at[index, "inst_keys"] = np.array(nn_instances.index)
             self.patterns.at[index, "labels"] = nn_instances["label"].to_numpy()
-            
 
     def _update_patterns_alt(self):
         instances = np.stack(self.instances["ts"])
         labels = self.instances["label"].to_numpy()
-        
+
         # transforming instances with shapelet
         inst_trmd = self.transformer.fit_transform(X=instances, y=labels)
-        
+
         # extracting shapelets
         shapelets = self.transformer.shapelets_
-        
+
         # training decision tree
         self.tree.fit(inst_trmd, labels)
-        
+
         # ADD NEW PATTERNS
         self.patterns = (
             pd.DataFrame({
-                "key" : [k(x) for x in shapelets],
-                "ts" : [x for x in shapelets],
-                "idx" : [i for i in range(shapelets.shape[0])],
-                "inst_keys" : [np.array([]) for _ in shapelets], 
-                "labels" : [np.array([]) for _ in shapelets], 
-                "l_probas" : [np.array([]) for _ in shapelets]
+                "key": [k(x) for x in shapelets],
+                "ts": [x for x in shapelets],
+                "idx": [i for i in range(shapelets.shape[0])],
+                "inst_keys": [np.array([]) for _ in shapelets],
+                "labels": [np.array([]) for _ in shapelets],
+                "l_probas": [np.array([]) for _ in shapelets]
             }).drop_duplicates('key')
-              .set_index('key')
+                .set_index('key')
         )
-        
-            
+
     def _drop_empty_patterns(self) -> None:
         """Pretty self explanatory
         """
         aux_df = pd.DataFrame(self.patterns["inst_keys"])
-        aux_df["empty_bool"] = aux_df["inst_keys"].apply(lambda x : True if len(x)==0 else False)
+        aux_df["empty_bool"] = aux_df["inst_keys"].apply(lambda x: True if len(x) == 0 else False)
         empty_pat_idxs = aux_df[aux_df["empty_bool"]].index
         self.patterns = self.patterns.drop(empty_pat_idxs)
 
-    
     def _update_instances(self, DL, L, Li) -> None:
         """For each element in DL, check if exists in instances
             if not, add to self.instances
@@ -370,13 +367,12 @@ class ACTS:
         )
         self.instances = self.instances.append(
             pd.DataFrame({
-                "key" : new_keys,
-                "ts" : [x for x in DL[new_idxs]],
-                "label" : L[new_idxs],
-                "near_pt" : [np.nan for _ in L[new_idxs]],
+                "key": new_keys,
+                "ts": [x for x in DL[new_idxs]],
+                "label": L[new_idxs],
+                "near_pt": [np.nan for _ in L[new_idxs]],
             }).set_index("key")
         )
-
 
     def _calculate_probx(self, X, pt) -> None:
         """Calculates the value of P(X | pt)
@@ -387,10 +383,9 @@ class ACTS:
             - pt : (array-like) pattern
         """
         lam = self.patterns.at[k(pt), "lambda"]
-        return math.exp(-lam*_dis(X, pt))
+        return math.exp(-lam * _dis(X, pt))
 
-    
-    def run_tree(self, X : np.ndarray):
+    def run_tree(self, X: np.ndarray):
         """Given the transformed instances in X, returns the pattern keys 
         they are assigned to.
         """
@@ -414,8 +409,6 @@ class ACTS:
             pt_key = pt_key[0]
             pt_keys.append(pt_key)
         return pt_keys
-            
-
 
     def _calculate_multinomial(self) -> None:
         """For each pattern, given labels, calculates l_probas
@@ -426,9 +419,9 @@ class ACTS:
             - N : length of labels
         """
         self.patterns["l_probas"] = self.patterns["labels"].apply(
-            lambda x : np.array([
-                len(np.where(x==l)[0]) for l in self.label_set
-            ])/len(x)
+            lambda x: np.array([
+                len(np.where(x == l)[0]) for l in self.label_set
+            ]) / len(x)
         )
 
     def _calculate_uncr(self, DL, X, L, k_max):
@@ -442,25 +435,26 @@ class ACTS:
         # then -->
         # X.pt = self.patterns.get_value(pattern_key, "ts")
 
-        # CALCULATE Y NEIGHBOURS TO X
-        Y_neighbours = NearestNeighbors.kneighbors(X=X, n_neighbors=k_max, return_distance=False)
+        # CREATE DISTANCE LIST AND MIN AND MAX VALUES
+        distance_list = [_dis(X, y) for y in DL]  # ITERATES ALL ELEMENTS STORES ALL DISTANCES
+        d1 = np.min(distance_list)
+        d_max = np.max(distance_list)
 
-        # CALCULATE DISTANCES 1 AND K
-        d1 = _dis(X, Y_neighbours[0])
-        dk = _dis(X, Y_neighbours[-1:])
+        # 
+
 
         # FOR ALL POSSIBLE LABELS, CALCULATE PROBABILITY
         prob = 0
         for i in range(len(self.patterns["l_probas"])):
             pattern_key = self.instances.get_value(Y_neighbours[i], "near_pt")
             Y_pt = self.patterns.get_value(pattern_key, "ts")
-            prob += self._calculate_probx(X, Y_pt)*self.patterns["l_probas"][i]
+            prob += self._calculate_probx(X, Y_pt) * self.patterns["l_probas"][i]
 
-        normalizer = np.average(prob) # NOT SURE OF
+        normalizer = np.average(prob)  # NOT SURE OF
 
-        normalized_probability = (1/normalizer)*prob
+        normalized_probability = (1 / normalizer) * prob
 
-        return normalized_probability*np.log(normalized_probability)*(d1/dk)
+        return normalized_probability * np.log(normalized_probability) * (d1 / dk)
 
     def _calculate_uti(self, DU, DL, k_max):
         """
@@ -479,24 +473,23 @@ class ACTS:
         rn = []
         for X in DU:
             if X in near_neighbours:
-               rn.append(X)
+                rn.append(X)
 
         # DISTANCES
         distances = []
-        for i,Y in rn:
+        for i, Y in rn:
             dist = _dis_o(rn[i], Y)
             distances.append(dist)
 
         # CALCULATE MAX DISTANCE
         max_dist = []
-        for i,Y in rn:
+        for i, Y in rn:
             maxd = max(_dis(rn[i], Y))
             max_dist.append(maxd)
 
         # -------
         simD = []
         for i in rn:
-            sim = 1 - (distances[i]/max_dist[i])
+            sim = 1 - (distances[i] / max_dist[i])
 
-        # 
-
+        #
