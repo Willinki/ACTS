@@ -440,7 +440,10 @@ class ACTS:
         d1 = np.min(distance_list)
         d_max = np.max(distance_list)
 
-        # 
+        # RETRIEVE K NEAREST INSTANCES
+        knn_idx = np.argpartition(distance_list, k_max)[:k_max] # FINDS THE INDEXES OF THE CLOSEST K-INSTANCES IN DL
+        knn = DL[knn_idx] # EXTRACTS THE INSTANCES FROM DL
+        
 
 
         # FOR ALL POSSIBLE LABELS, CALCULATE PROBABILITY
