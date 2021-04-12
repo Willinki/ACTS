@@ -440,23 +440,35 @@ class ACTS:
 
         # (1) CREATE DISTANCE LIST AND MIN AND MAX VALUES
         distance_list = [_dis(X, y) for y in DL]  # ITERATES ALL ELEMENTS STORES ALL DISTANCES
-        d1 = min(distance_list)
-        d_max = max(distance_list)
 
-        # (2) RETRIEVE K NEAREST INSTANCES
         knn_idx = np.argpartition(distance_list, k_max)[:k_max]  # FINDS THE INDEXES OF THE CLOSEST K-INSTANCES IN DL
         knn = DL[knn_idx]  # EXTRACTS THE INSTANCES FROM DL
 
-        # (3) ITERATE OVER ALL POSSIBLE LABELS
-        post_prob = 0
-        for l in L:
-            for j in knn:
-                post_prob += self._calculate_probx(X, knn[j]) * self.patterns["l_probas"].apply  # SOMETHING
+        distance_list = np.sort(distance_list)
+        distance_list_ = distance_list[:k_max]
 
-        # (4) NORMALIZE AND RETURN
-        normalizer = np.average(post_prob)  # NOT SURE OF
-        normalized_probability = (1 / normalizer) * post_prob
-        return normalized_probability * np.log(normalized_probability) * (d1 / d_max)
+        d1 = min(distance_list)
+        d_max = max(distance_list)
+
+        # (2) ITERATE OVER ALL POSSIBLE LABELS
+        probs = []
+        sum_probs = 0
+        for l in L: # 0 --> 3 (4 values)
+            for j in knn:
+                pt_key = self.instances[self.instances["ts"] == knn[j]]["near_pt"].to_numpy()
+                pt = self.patterns.get_value[pt_key, "ts"]
+                sum_probs += self._calculate_probx(X, pt) * self.patterns["l_probas"].apply  # SOMETHING
+            probs.append(sum_probs)
+
+
+        # (3) NORMALIZE AND RETURN
+        norm_Z = sum(probs)
+        # norm_probs = []
+        uncr = 0
+        for i in probs:
+            uncr += (probs[i] / norm_Z) * np.log(probs[i] / norm_Z) * (d1 / d_max)
+
+        return uncr
 
 
     def _calculate_uti(self, DU, DL, k_max):
@@ -474,7 +486,7 @@ class ACTS:
         # (1) CALCULATE REVERSE NEAREST NEIGHBOURS
         new_dict = self._calc_rnn(DU=DU, DL=DL, k_nn=k_max)
 
-        
+
         # (3) CALCULATE DISTANCE FROM NEAREST NEIGHBORS
         max_list = []
         simD = []
@@ -543,6 +555,7 @@ class ACTS:
         Args:
             DU: Unlabeled time series data set
             DL: Labeled time series data set
+            k_nn: k-Neighbors
 
         Returns: A dictionary of reverse nearest neighbors where key X is linked with a list of Y values
 
@@ -557,11 +570,28 @@ class ACTS:
                 rnn_idx = np.argpartition(dist_list, k_nn)[:k_nn]  # FINDS THE INDEXES OF THE CLOSEST K-INSTANCES IN DU
                 if X in DU[rnn_idx]:
                     rnn.append(Y)
-            dictionary[X] = rnn
+            key = k(X=X)
+            dictionary[key] = rnn
             rnn = []
 
         return dictionary
 
+    def _sim_D(self, X, dictionary):
+        """
+        Calculates normalized distance between X and Ys
+        Args:
+            X: The instance that requires labelling
+            dictionary: Where Y values are stored. Use X as key
 
-        # (2) FOR EACH X IN DU, CHECK IF IT IS KNN OF Y IN DL
-        for X in DU:
+        Returns: normalized distance
+
+        """
+        # (1) GET Y VALUES FROM DICTIONARY
+        values_Y = dictionary.get(X, default="Key does not exist.")
+
+        # (2) CALCULATE DISTANCE FOR EACH Y TO X, MAX DISTANCE, AND NORMALIZED DISTANCE
+        dist_list = [_dis(X, Y) for Y in values_Y]
+        max_dist = max(dist_list)
+        simD = [(1 - (dist_list[j] / max_dist)) for j in values_Y]
+
+        return simD
