@@ -486,68 +486,47 @@ class ACTS:
         # (1) CALCULATE REVERSE NEAREST NEIGHBOURS
         new_dict = self._calc_rnn(DU=DU, DL=DL, k_nn=k_max)
 
-
-        # (3) CALCULATE DISTANCE FROM NEAREST NEIGHBORS
-        max_list = []
+        # (2) FOR EACH KEY IN DICTIONARY, CALCULATED SIM_D
+        key_list = new_dict.keys()
         simD = []
-        for Y in rnn:
-            dist_list = [_dis(Y, X) for X in rnn]
-            max_dist = max(dist_list)
-            max_list.append(max_dist)
-            simD_part = 1 - (dist_list / max_dist)
+        X_list = []
+        for key in key_list:
+            X = k(X=key)
+            simD_part = self._sim_D(X=X, dictionary=new_dict)
+            simD.append(simD_part)
+            X_list.append(X)
 
-        # (4) CALCULATE NN OF Xi IN DL
-        for X in DU:
-            LN = 0
-            # FIND ALL Yj FOR THIS SPECIFIC X
+        # (3) CALCULATE NN OF Xi THAT ARE IN DL (PERHAPS MAKE INTO A FUNCTION)
+        sum_probs = []
+        norms = []
+        sum_index = 0
+        for X in X_list:
+            sum_index, Z = self._prob_pattern(X=X, dictionary=new_dict)
+            sum_probs.append(sum_index)
+            norms.append(Z)
 
-        # (5) CALCULATE FOR EACH POSSIBLE PATTERN
-        similarities = []
-        sum_probs = 0
-        for pt in self.patterns:
-            for Y in LN:
-                I = 0
-                if Y == pt:
-                    I = 1
-                sum_probs += self._calculate_probx(X, Y) * I
-            similarities.append(sum_probs)
+        prob_X = []
+        for i in sum_probs:
+            prob_Xi = sum_probs[i] / norms[i]
+            prob_X.append(prob_Xi)
 
-        Z = sum(similarities)
-        prob_Xi = []
-        for i in similarities:
-            prob = similarities[i] / Z
-            prob_Xi.append(prob)
+        # DO THE SAME FOR Y
 
-        # (6) CALCULATE NN OF Yi IN DU
-        for Y in DL:
-            LN = 0
-            # FIND ALL Yj FOR THIS SPECIFIC X
+        # (5) CALCULATE EVALUATION OF THE SIMILARITY OF X AND Y's DISTRIBUTION OVER PATTERNS
+        simP = []
+        for i in prob_X:
+            simP_part = 1 - jensenshannon(prob_X[i], probY[i])
+            simP.append(simP_part)
 
-        # (7) CALCULATE FOR EACH POSSIBLE PATTERN
-        similarities = []
-        sum_probs = 0
-        for pt in self.patterns:
-            for X in LN:
-                I = 0
-                if X == pt:
-                    I = 1
-                sum_probs += self._calculate_probx(Y, X) * I
-            similarities.append(sum_probs)
+        # (6) CALCULATE SIMILARITY MEASURE AND UTILITY
+        sim = []
+        for i in simP:
+            sim_part = simD[i] * simP[i]
+            sim.append(simP_part)
 
-        Z = sum(similarities)
-        prob_Yi = []
-        for i in similarities:
-            prob = similarities[i] / Z
-            prob_Yi.append(prob)
+        utility = sum(sim)
+        return utility
 
-        # (8) CALCULATE SIMILARITY PROBABILITY
-        simP  = 1 - jensenshannon(prob_Xi, prob_Yi)
-        sim = simD*simP
-        sum_sim = 0
-        for Y in rnn:
-            sum_sim += sim(X, Y)
-
-        return sum_sim
 
     def _calc_rnn(self, DU, DL, k_nn):
         """
@@ -595,3 +574,34 @@ class ACTS:
         simD = [(1 - (dist_list[j] / max_dist)) for j in values_Y]
 
         return simD
+
+    def _prob_pattern(self, X, dictionary):
+        """
+        Calculate specified quantity for each possible pattern.
+        Args:
+            X: Unlabeled time series data
+            dictionary: Containing NN labeled time series to X
+
+        Returns: Sum of probabilities for each pattern and normalization constant
+
+        """
+        # (1) GET Y VALUES FROM DICTIONARY
+        values_Y = dictionary.get(X, default="Key does not exist.")
+
+        # (2) CALCULATE SUM FOR EACH PATTERN
+        pattern_sums = []
+        for pt in self.patterns:
+            sum_prob = 0
+            for Y in values_Y:
+                I = 0
+                pt_key = self.instances[self.instances["ts"] == Y]["near_pt"].to_numpy()
+                Y_pt = self.patterns.get_value[pt_key, "ts"]
+                if Y_pt == pt:
+                    I = 1
+                sum_prob += self._calculate_probx(X, Y) * I
+            pattern_sums.append(sum_prob)
+
+        # (3) NORMALIZING CONSTANT
+        norm_Z = sum(pattern_sums)
+
+        return pattern_sums, norm_Z
