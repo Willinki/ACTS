@@ -10,6 +10,7 @@ import random
 import math
 import warnings
 from sklearn.base import BaseEstimator
+from scipy.spatial.distance import jensenshannon
 
 warnings.filterwarnings("ignore", category=np.VisibleDeprecationWarning)
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -523,6 +524,34 @@ class ACTS:
         for i in similarities:
             prob = similarities[i] / Z
             prob_Xi.append(prob)
-        
 
+        # (6) CALCULATE NN OF Yi IN DU
+        for Y in DL:
+            LN = 0
+            # FIND ALL Yj FOR THIS SPECIFIC X
 
+        # (7) CALCULATE FOR EACH POSSIBLE PATTERN
+        similarities = []
+        sum_probs = 0
+        for pt in self.patterns:
+            for X in LN:
+                I = 0
+                if X == pt:
+                    I = 1
+                sum_probs += self._calculate_probx(Y, X) * I
+            similarities.append(sum_probs)
+
+        Z = sum(similarities)
+        prob_Yi = []
+        for i in similarities:
+            prob = similarities[i] / Z
+            prob_Yi.append(prob)
+
+        # (8) CALCULATE SIMILARITY PROBABILITY
+        simP  = 1 - jensenshannon(prob_Xi, prob_Yi)
+        sim = simD*simP
+        sum_sim = 0
+        for Y in rnn:
+            sum_sim += sim(X, Y)
+
+        return sum_sim
