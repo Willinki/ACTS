@@ -493,7 +493,18 @@ class ACTS:
             # rnn_part = DU[rnn_idx]  # EXTRACTS THE INSTANCES FROM DU
             # rnn.append(rnn_part)
 
-        # (3)
+        # (3) CALCULATE DISTANCE FROM NEAREST NEIGHBORS
+        max_list = []
+        simD = []
+        for Y in rnn:
+            dist_list = [_dis(Y, X) for X in rnn]
+            max_dist = max(dist_list)
+            max_list.append(max_dist)
+            simD_part = 1 - (dist_list / max_dist)
+
+        
+
+
 
 
 
