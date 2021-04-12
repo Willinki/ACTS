@@ -425,47 +425,79 @@ class ACTS:
         )
 
     def _calculate_uncr(self, DL, X, L, k_max):
-        """ Find X's k-nearest neighbours LN_Ks(X)
-        Estimate posterior P(y = l|X) from training set
-        Use to set into summation equation.
-        Multiply with quota of distances.
         """
-        # to obtain X'.pt 
-        # pattern_key = self.instances.get_value(<index_of_X'>, "near_pt")
-        # then -->
-        # X.pt = self.patterns.get_value(pattern_key, "ts")
+        Given a unlabeled instance, this function calculates the uncertainty of a label.
+        Args:
+            DL: Labeled data set
+            X: The unlabeled time series instance
+            L: Not sure of ... FIX
+            k_max: Neighbors to the unlabeled instance that are to be calculated
 
-        # CREATE DISTANCE LIST AND MIN AND MAX VALUES
+        Returns: The uncertainty of a label for instance X
+
+        """
+
+        # (1) CREATE DISTANCE LIST AND MIN AND MAX VALUES
         distance_list = [_dis(X, y) for y in DL]  # ITERATES ALL ELEMENTS STORES ALL DISTANCES
-        d1 = np.min(distance_list)
-        d_max = np.max(distance_list)
+        d1 = min(distance_list)
+        d_max = max(distance_list)
 
-        # RETRIEVE K NEAREST INSTANCES
-        knn_idx = np.argpartition(distance_list, k_max)[:k_max] # FINDS THE INDEXES OF THE CLOSEST K-INSTANCES IN DL
-        knn = DL[knn_idx] # EXTRACTS THE INSTANCES FROM DL
-        
+        # (2) RETRIEVE K NEAREST INSTANCES
+        knn_idx = np.argpartition(distance_list, k_max)[:k_max]  # FINDS THE INDEXES OF THE CLOSEST K-INSTANCES IN DL
+        knn = DL[knn_idx]  # EXTRACTS THE INSTANCES FROM DL
 
+        # (3) ITERATE OVER ALL POSSIBLE LABELS
+        label_list = self.label_set
+        post_prob = 0
+        for l in label_list:
+            for j in knn:
+                post_prob += self._calculate_probx(X, knn[j]) * self.patterns["l_probas"].apply  # SOMETHING
 
-        # FOR ALL POSSIBLE LABELS, CALCULATE PROBABILITY
-        prob = 0
-        for i in range(len(self.patterns["l_probas"])):
-            pattern_key = self.instances.get_value(Y_neighbours[i], "near_pt")
-            Y_pt = self.patterns.get_value(pattern_key, "ts")
-            prob += self._calculate_probx(X, Y_pt) * self.patterns["l_probas"][i]
+        # (4) NORMALIZE AND RETURN
+        normalizer = np.average(post_prob)  # NOT SURE OF
+        normalized_probability = (1 / normalizer) * post_prob
+        return normalized_probability * np.log(normalized_probability) * (d1 / d_max)
 
-        normalizer = np.average(prob)  # NOT SURE OF
-
-        normalized_probability = (1 / normalizer) * prob
-
-        return normalized_probability * np.log(normalized_probability) * (d1 / dk)
 
     def _calculate_uti(self, DU, DL, k_max):
         """
         Calculate utility based on a set of questions and an unlabeled dataset.
         Args:
-            DU:
-        Returns:
+            DU: Unlabeled time series data set
+            DL: Labeled time series data set
+            k_max: Number of neighbors that are to be calculated
+
+        Returns: The utility of a new labeled instance
+
         """
+
+        # (1) CALCULATE K-NEAREST NEIGHBORS FOR Y IN DU
+        knn = []
+        knn_idx_list = []
+        for Y in DL:
+            dist_list = [_dis(Y, X) for X in DU]  # ITERATES ALL ELEMENTS STORES ALL DISTANCES
+            knn_idx = np.argpartition(dist_list, k_max)[:k_max]  # FINDS THE INDEXES OF THE CLOSEST K-INSTANCES IN DU
+            knn_idx_list.append(knn_idx)
+            # rnn_part = DU[knn_idx]  # EXTRACTS THE INSTANCES FROM DU
+            # rnn.append(rnn_part)
+
+        # (2) CHECK ALL Yj IN DL THAT HAS Xi AS A KNN
+        rnn = []
+        rnn_idx_list = []
+        for X in DU:
+            if X in knn_idx_list:
+                rnn.append(X)
+            # dist_list = [_dis(X, Y) for Y in DL]  # ITERATES ALL ELEMENTS STORES ALL DISTANCES
+            # rnn_idx = np.argpartition(dist_list, k_max)[:k_max]  # FINDS THE INDEXES OF THE CLOSEST K-INSTANCES IN DL
+            # rnn_idx_list.append(rnn_idx)
+            # rnn_part = DU[rnn_idx]  # EXTRACTS THE INSTANCES FROM DU
+            # rnn.append(rnn_part)
+
+        # (3)
+
+
+
+
         # CALCULATE NEAREST NEIGHBOURS
         near_neighbours = []
         for Y in DL:
