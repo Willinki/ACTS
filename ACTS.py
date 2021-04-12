@@ -502,40 +502,27 @@ class ACTS:
             max_list.append(max_dist)
             simD_part = 1 - (dist_list / max_dist)
 
+        # (4) CALCULATE NN OF Xi IN DL
+        for X in DU:
+            LN = 0
+            # FIND ALL Yj FOR THIS SPECIFIC X
+
+        # (5) CALCULATE FOR EACH POSSIBLE PATTERN
+        similarities = []
+        sum_probs = 0
+        for pt in self.patterns:
+            for Y in LN:
+                I = 0
+                if Y == pt:
+                    I = 1
+                sum_probs += self._calculate_probx(X, Y) * I
+            similarities.append(sum_probs)
+
+        Z = sum(similarities)
+        prob_Xi = []
+        for i in similarities:
+            prob = similarities[i] / Z
+            prob_Xi.append(prob)
         
 
 
-
-
-
-
-        # CALCULATE NEAREST NEIGHBOURS
-        near_neighbours = []
-        for Y in DL:
-            nn = NearestNeighbors.kneighbors(X=Y, n_neighbors=k_max, return_distance=False)
-            near_neighbours.append(nn)
-
-        # REVERSE NEIGHBOURS
-        rn = []
-        for X in DU:
-            if X in near_neighbours:
-                rn.append(X)
-
-        # DISTANCES
-        distances = []
-        for i, Y in rn:
-            dist = _dis_o(rn[i], Y)
-            distances.append(dist)
-
-        # CALCULATE MAX DISTANCE
-        max_dist = []
-        for i, Y in rn:
-            maxd = max(_dis(rn[i], Y))
-            max_dist.append(maxd)
-
-        # -------
-        simD = []
-        for i in rn:
-            sim = 1 - (distances[i] / max_dist[i])
-
-        #
