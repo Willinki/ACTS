@@ -431,7 +431,7 @@ class ACTS:
         Args:
             DL: Labeled data set
             X: The unlabeled time series instance
-            L: Not sure of ... FIX
+            L: Label set
             k_max: Neighbors to the unlabeled instance that are to be calculated
 
         Returns: The uncertainty of a label for instance X
@@ -448,9 +448,8 @@ class ACTS:
         knn = DL[knn_idx]  # EXTRACTS THE INSTANCES FROM DL
 
         # (3) ITERATE OVER ALL POSSIBLE LABELS
-        label_list = self.label_set
         post_prob = 0
-        for l in label_list:
+        for l in L:
             for j in knn:
                 post_prob += self._calculate_probx(X, knn[j]) * self.patterns["l_probas"].apply  # SOMETHING
 
@@ -472,28 +471,10 @@ class ACTS:
 
         """
 
-        # (1) CALCULATE K-NEAREST NEIGHBORS FOR Y IN DU
-        knn = []
-        knn_idx_list = []
-        for Y in DL:
-            dist_list = [_dis(Y, X) for X in DU]  # ITERATES ALL ELEMENTS STORES ALL DISTANCES
-            knn_idx = np.argpartition(dist_list, k_max)[:k_max]  # FINDS THE INDEXES OF THE CLOSEST K-INSTANCES IN DU
-            knn_idx_list.append(knn_idx)
-            # rnn_part = DU[knn_idx]  # EXTRACTS THE INSTANCES FROM DU
-            # rnn.append(rnn_part)
+        # (1) CALCULATE REVERSE NEAREST NEIGHBOURS
+        new_dict = self._calc_rnn(DU=DU, DL=DL, k_nn=k_max)
 
-        # (2) CHECK ALL Yj IN DL THAT HAS Xi AS A KNN
-        rnn = []
-        rnn_idx_list = []
-        for X in DU:
-            if X in knn_idx_list:
-                rnn.append(X)
-            # dist_list = [_dis(X, Y) for Y in DL]  # ITERATES ALL ELEMENTS STORES ALL DISTANCES
-            # rnn_idx = np.argpartition(dist_list, k_max)[:k_max]  # FINDS THE INDEXES OF THE CLOSEST K-INSTANCES IN DL
-            # rnn_idx_list.append(rnn_idx)
-            # rnn_part = DU[rnn_idx]  # EXTRACTS THE INSTANCES FROM DU
-            # rnn.append(rnn_part)
-
+        
         # (3) CALCULATE DISTANCE FROM NEAREST NEIGHBORS
         max_list = []
         simD = []
@@ -555,3 +536,32 @@ class ACTS:
             sum_sim += sim(X, Y)
 
         return sum_sim
+
+    def _calc_rnn(self, DU, DL, k_nn):
+        """
+        Calculates a set of reverse nearest neighbors.
+        Args:
+            DU: Unlabeled time series data set
+            DL: Labeled time series data set
+
+        Returns: A dictionary of reverse nearest neighbors where key X is linked with a list of Y values
+
+        """
+        # GET ALL KNNs IN DU FOR Y IN DL
+        knn = []
+        rnn = []
+        dictionary = {}
+        for X in DU:
+            for Y in DL:
+                dist_list = [_dis(xi, Y) for xi in DU]
+                rnn_idx = np.argpartition(dist_list, k_nn)[:k_nn]  # FINDS THE INDEXES OF THE CLOSEST K-INSTANCES IN DU
+                if X in DU[rnn_idx]:
+                    rnn.append(Y)
+            dictionary[X] = rnn
+            rnn = []
+
+        return dictionary
+
+
+        # (2) FOR EACH X IN DU, CHECK IF IT IS KNN OF Y IN DL
+        for X in DU:
