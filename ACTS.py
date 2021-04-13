@@ -445,31 +445,29 @@ class ACTS:
         knn = DL[knn_idx]  # EXTRACTS THE INSTANCES FROM DL
 
         distance_list = np.sort(distance_list)
-        distance_list_ = distance_list[:k_max]
+        distance_list = distance_list[:k_max]
 
         d1 = min(distance_list)
         d_max = max(distance_list)
 
         # (2) ITERATE OVER ALL POSSIBLE LABELS
         probs = []
-        sum_probs = 0
-        for l in L: # 0 --> 3 (4 values)
+        for l in L:  # 0 --> 3 (4 values)
+            sum_probs = 0
             for j in knn:
-                pt_key = self.instances[self.instances["ts"] == knn[j]]["near_pt"].to_numpy()
+                pt_key = self.instances[self.instances["ts"] == knn[j]]["near_pt"].to_numpy()  # SHOULD BE CORRECTED
                 pt = self.patterns.get_value[pt_key, "ts"]
-                sum_probs += self._calculate_probx(X, pt) * self.patterns["l_probas"].apply  # SOMETHING
+                sum_probs += self._calculate_probx(X, pt) * self.patterns["l_probas"][l]
             probs.append(sum_probs)
-
 
         # (3) NORMALIZE AND RETURN
         norm_Z = sum(probs)
         # norm_probs = []
         uncr = 0
-        for i in probs:
-            uncr += (probs[i] / norm_Z) * np.log(probs[i] / norm_Z) * (d1 / d_max)
+        for label in probs:
+            uncr += (probs[label] / norm_Z) * np.log(probs[label] / norm_Z) * (d1 / d_max)
 
         return uncr
-
 
     def _calculate_uti(self, DU, DL, k_max):
         """
@@ -489,12 +487,13 @@ class ACTS:
         # (2) FOR EACH KEY IN DICTIONARY, CALCULATED SIM_D
         key_list = new_dict.keys()
         simD = []
-        X_list = []
+        # X_list = []
         for key in key_list:
-            X = k(X=key)
-            simD_part = self._sim_D(X=X, dictionary=new_dict)
+            # X = new_dict.get(key) # IMPROVE LATER
+            # X = k(X=key)
+            simD_part = self._sim_D(X=key, dictionary=new_dict)
             simD.append(simD_part)
-            X_list.append(X)
+            # X_list.append(X)
 
         # (3) CALCULATE NN OF Xi THAT ARE IN DL (PERHAPS MAKE INTO A FUNCTION)
         sum_probs = []
@@ -527,7 +526,6 @@ class ACTS:
         utility = sum(sim)
         return utility
 
-
     def _calc_rnn(self, DU, DL, k_nn):
         """
         Calculates a set of reverse nearest neighbors.
@@ -540,18 +538,16 @@ class ACTS:
 
         """
         # GET ALL KNNs IN DU FOR Y IN DL
-        knn = []
-        rnn = []
         dictionary = {}
         for X in DU:
+            rnn = []
             for Y in DL:
                 dist_list = [_dis(xi, Y) for xi in DU]
                 rnn_idx = np.argpartition(dist_list, k_nn)[:k_nn]  # FINDS THE INDEXES OF THE CLOSEST K-INSTANCES IN DU
                 if X in DU[rnn_idx]:
                     rnn.append(Y)
-            key = k(X=X)
+            key = k()
             dictionary[key] = rnn
-            rnn = []
 
         return dictionary
 
@@ -571,7 +567,7 @@ class ACTS:
         # (2) CALCULATE DISTANCE FOR EACH Y TO X, MAX DISTANCE, AND NORMALIZED DISTANCE
         dist_list = [_dis(X, Y) for Y in values_Y]
         max_dist = max(dist_list)
-        simD = [(1 - (dist_list[j] / max_dist)) for j in values_Y]
+        simD = [(1 - (dist / max_dist)) for dist in dist_list]
 
         return simD
 
