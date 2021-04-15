@@ -440,32 +440,30 @@ class ACTS:
 
         # (1) CREATE DISTANCE LIST AND MIN AND MAX VALUES
         distance_list = [_dis(X, y) for y in DL]  # ITERATES ALL ELEMENTS STORES ALL DISTANCES
-
         knn_idx = np.argpartition(distance_list, k_max)[:k_max]  # FINDS THE INDEXES OF THE CLOSEST K-INSTANCES IN DL
         knn = DL[knn_idx]  # EXTRACTS THE INSTANCES FROM DL
 
         distance_list = np.sort(distance_list)
         distance_list = distance_list[:k_max]
-
         d1 = min(distance_list)
         d_max = max(distance_list)
 
         # (2) ITERATE OVER ALL POSSIBLE LABELS
-        probs = []
+        probability_list = []
         for l in L:  # 0 --> 3 (4 values)
-            sum_probs = 0
+            sum_probability = 0
             for j in knn:
                 pt_key = self.instances[self.instances["ts"] == knn[j]]["near_pt"].to_numpy()  # SHOULD BE CORRECTED
                 pt = self.patterns.get_value[pt_key, "ts"]
-                sum_probs += self._calculate_probx(X, pt) * self.patterns["l_probas"][l]
-            probs.append(sum_probs)
+                sum_probability += self._calculate_probx(X, pt) * self.patterns["l_probas"][l]
+            probability_list.append(sum_probability)
 
         # (3) NORMALIZE AND RETURN
-        norm_Z = sum(probs)
+        norm_Z = sum(probability_list)
         # norm_probs = []
         uncr = 0
-        for label in probs:
-            uncr += (probs[label] / norm_Z) * np.log(probs[label] / norm_Z) * (d1 / d_max)
+        for label in probability_list:
+            uncr += (probability_list[label] / norm_Z) * np.log(probability_list[label] / norm_Z) * (d1 / d_max)
 
         return uncr
 
@@ -480,20 +478,18 @@ class ACTS:
         Returns: The utility of a new labeled instance
 
         """
-
+        # CONTINUE HERE ...
         # (1) CALCULATE REVERSE NEAREST NEIGHBOURS
-        new_dict = self._calc_rnn(DU=DU, DL=DL, k_nn=k_max)
+        new_dict, X_list = self._calc_rnn(DU=DU, DL=DL, k_nn=k_max)
 
         # (2) FOR EACH KEY IN DICTIONARY, CALCULATED SIM_D
         key_list = new_dict.keys()
         simD = []
-        # X_list = []
-        for key in key_list:
-            # X = new_dict.get(key) # IMPROVE LATER
-            # X = k(X=key)
-            simD_part = self._sim_D(X=key, dictionary=new_dict)
+        for i, key in enumerate(key_list):
+            X = X_list[i]
+            y_values = new_dict.get(key)
+            simD_part = self._sim_D(X=X, Y_values=y_values)
             simD.append(simD_part)
-            # X_list.append(X)
 
         # (3) CALCULATE NN OF Xi THAT ARE IN DL (PERHAPS MAKE INTO A FUNCTION)
         sum_probs = []
@@ -504,8 +500,10 @@ class ACTS:
             sum_probs.append(sum_index)
             norms.append(Z)
 
+        # CONTINUE HERE --- ---
+
         prob_X = []
-        for i in sum_probs:
+        for i in range(len(sum_probs)):
             prob_Xi = sum_probs[i] / norms[i]
             prob_X.append(prob_Xi)
 
@@ -514,8 +512,8 @@ class ACTS:
         # (5) CALCULATE EVALUATION OF THE SIMILARITY OF X AND Y's DISTRIBUTION OVER PATTERNS
         simP = []
         for i in prob_X:
-            simP_part = 1 - jensenshannon(prob_X[i], probY[i])
-            simP.append(simP_part)
+            simP_part = 1 - jensenshannon(prob_X[i], probY[i])  # TAKES PROBABLY THE WHOLE ARRAY
+            simP.append(simP_part) 
 
         # (6) CALCULATE SIMILARITY MEASURE AND UTILITY
         sim = []
@@ -539,19 +537,21 @@ class ACTS:
         """
         # GET ALL KNNs IN DU FOR Y IN DL
         dictionary = {}
-        for X in DU:
+        X_list = []
+        for i, X in enumerate(DU):
             rnn = []
             for Y in DL:
                 dist_list = [_dis(xi, Y) for xi in DU]
                 rnn_idx = np.argpartition(dist_list, k_nn)[:k_nn]  # FINDS THE INDEXES OF THE CLOSEST K-INSTANCES IN DU
                 if X in DU[rnn_idx]:
                     rnn.append(Y)
-            key = k()
+            key = i
+            X_list.append(X)
             dictionary[key] = rnn
 
-        return dictionary
+        return dictionary, X_list
 
-    def _sim_D(self, X, dictionary):
+    def _sim_D(self, X, Y_values):
         """
         Calculates normalized distance between X and Ys
         Args:
@@ -562,16 +562,16 @@ class ACTS:
 
         """
         # (1) GET Y VALUES FROM DICTIONARY
-        values_Y = dictionary.get(X, default="Key does not exist.")
+        # values_Y = dictionary.get(X, default="Key does not exist.")
 
         # (2) CALCULATE DISTANCE FOR EACH Y TO X, MAX DISTANCE, AND NORMALIZED DISTANCE
-        dist_list = [_dis(X, Y) for Y in values_Y]
+        dist_list = [_dis(X, Y) for Y in Y_values]
         max_dist = max(dist_list)
         simD = [(1 - (dist / max_dist)) for dist in dist_list]
 
         return simD
 
-    def _prob_pattern(self, X, dictionary):
+    def _prob_pattern(self, X, Y_values):
         """
         Calculate specified quantity for each possible pattern.
         Args:
@@ -582,19 +582,20 @@ class ACTS:
 
         """
         # (1) GET Y VALUES FROM DICTIONARY
-        values_Y = dictionary.get(X, default="Key does not exist.")
+        # values_Y = dictionary.get(X, default="Key does not exist.")
 
         # (2) CALCULATE SUM FOR EACH PATTERN
         pattern_sums = []
-        for pt in self.patterns:
+        for pt in self.patterns["ts"].to_numpy():
             sum_prob = 0
-            for Y in values_Y:
-                I = 0
-                pt_key = self.instances[self.instances["ts"] == Y]["near_pt"].to_numpy()
+            for Y in Y_values:
+                I_binary = 0
+                pt_key = self.instances[self.instances["ts"] == Y]["near_pt"].to_numpy()  # SAME AS OTHER PROBLEM,
+                # CORRECT
                 Y_pt = self.patterns.get_value[pt_key, "ts"]
                 if Y_pt == pt:
-                    I = 1
-                sum_prob += self._calculate_probx(X, Y) * I
+                    I_binary = 1
+                sum_prob += self._calculate_probx(X, Y_pt) * I_binary
             pattern_sums.append(sum_prob)
 
         # (3) NORMALIZING CONSTANT
