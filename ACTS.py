@@ -439,9 +439,10 @@ class ACTS:
         """
 
         # (1) CREATE DISTANCE LIST AND MIN AND MAX VALUES
-        distance_list = [_dis(X, y) for y in DL]  # ITERATES ALL ELEMENTS STORES ALL DISTANCES
+        distance_list = [_dis(X, y) for y in np.stack(self.instances["ts"])]  # ITERATES ALL ELEMENTS STORES ALL DISTANCES
         knn_idx = np.argpartition(distance_list, k_max)[:k_max]  # FINDS THE INDEXES OF THE CLOSEST K-INSTANCES IN DL
-        knn = DL[knn_idx]  # EXTRACTS THE INSTANCES FROM DL
+        knn_keys = self.instances.iloc[knn_idx].index            # OBTAINS THE KEYS OF THE KNNs (key meaning the value of self.instances.key for each knn)
+        #knn = DL[knn_idx]  # EXTRACTS THE INSTANCES FROM DL
 
         distance_list = np.sort(distance_list)
         distance_list = distance_list[:k_max]
@@ -450,12 +451,12 @@ class ACTS:
 
         # (2) ITERATE OVER ALL POSSIBLE LABELS
         probability_list = []
-        for l in L:  # 0 --> 3 (4 values)
+        for l in L: # UNIQUE VALUES
             sum_probability = 0
-            for j in knn:
-                pt_key = self.instances[self.instances["ts"] == knn[j]]["near_pt"].to_numpy()  # SHOULD BE CORRECTED
+            for key in knn_keys:
+                pt_key = self.instances.get_value[key, "near_pt"]
                 pt = self.patterns.get_value[pt_key, "ts"]
-                sum_probability += self._calculate_probx(X, pt) * self.patterns["l_probas"][l]
+                sum_probability += self._calculate_probx(X, pt) * self.patterns.get_value[pt_key, "l_probas"][l]
             probability_list.append(sum_probability)
 
         # (3) NORMALIZE AND RETURN
@@ -590,7 +591,8 @@ class ACTS:
             sum_prob = 0
             for Y in Y_values:
                 I_binary = 0
-                pt_key = self.instances[self.instances["ts"] == Y]["near_pt"].to_numpy()  # SAME AS OTHER PROBLEM,
+                inst_key = self.get_inst_key(Y)
+                pt_key = self.instances.get_value[inst_key, "near_pt"]
                 # CORRECT
                 Y_pt = self.patterns.get_value[pt_key, "ts"]
                 if Y_pt == pt:
@@ -602,3 +604,13 @@ class ACTS:
         norm_Z = sum(pattern_sums)
 
         return pattern_sums, norm_Z
+
+    def get_inst_key(self, Y: np.ndarray):
+        """
+        Given an instance (array), return its key
+        """
+        idx = np.where([
+            np.array_equal(x, Y) 
+            for x in np.stack(self.instances["ts"])
+        ])
+        return self.instances.iloc[idx].index[0]
