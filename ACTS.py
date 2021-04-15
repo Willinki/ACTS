@@ -297,7 +297,7 @@ class ACTS:
                 ]
             )
             if self.patterns.at[index, "lambda"] == np.inf:
-                self.patterns.at[index, "lambda"] = 0
+                self.patterns.at[index, "lambda"] = 100000000000
 
     def _assign_instances(self) -> None:
         """For each instance, update near_pt by consulting the tree
@@ -454,9 +454,9 @@ class ACTS:
         for l in L: # UNIQUE VALUES
             sum_probability = 0
             for key in knn_keys:
-                pt_key = self.instances.get_value[key, "near_pt"]
-                pt = self.patterns.get_value[pt_key, "ts"]
-                sum_probability += self._calculate_probx(X, pt) * self.patterns.get_value[pt_key, "l_probas"][l]
+                pt_key = self.instances.at[key, "near_pt"]
+                pt = self.patterns.at[pt_key, "ts"]
+                sum_probability += self._calculate_probx(X, pt) * self.patterns.at[pt_key, "l_probas"][l]
             probability_list.append(sum_probability)
 
         # (3) NORMALIZE AND RETURN
@@ -592,9 +592,9 @@ class ACTS:
             for Y in Y_values:
                 I_binary = 0
                 inst_key = self.get_inst_key(Y)
-                pt_key = self.instances.get_value[inst_key, "near_pt"]
+                pt_key = self.instances.at[inst_key, "near_pt"]
                 # CORRECT
-                Y_pt = self.patterns.get_value[pt_key, "ts"]
+                Y_pt = self.patterns.at[pt_key, "ts"]
                 if Y_pt == pt:
                     I_binary = 1
                 sum_prob += self._calculate_probx(X, Y_pt) * I_binary
