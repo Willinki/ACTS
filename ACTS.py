@@ -456,17 +456,16 @@ class ACTS:
             for key in knn_keys:
                 pt_key = self.instances.at[key, "near_pt"]
                 pt = self.patterns.at[pt_key, "ts"]
-                sum_probability += self._calculate_probx(X, pt) * self.patterns.at[pt_key, "l_probas"][l]
+                sum_probability += self._calculate_probx(X, pt) * self.patterns.at[pt_key, "l_probas
             probability_list.append(sum_probability)
 
         # (3) NORMALIZE AND RETURN
         norm_Z = sum(probability_list)
-        # norm_probs = []
-        uncr = 0
+        uncertainty = 0
         for label in probability_list:
-            uncr += (probability_list[label] / norm_Z) * np.log(probability_list[label] / norm_Z) * (d1 / d_max)
+            uncertainty += (probability_list[label] / norm_Z) * np.log(probability_list[label] / norm_Z) * (d1 / d_max)
 
-        return uncr
+        return uncertainty
 
     def _calculate_uti(self, DU, DL, k_max):
         """
@@ -493,34 +492,46 @@ class ACTS:
             simD.append(simD_part)
 
         # (3) CALCULATE NN OF Xi THAT ARE IN DL (PERHAPS MAKE INTO A FUNCTION)
-        sum_probs = []
+        sum_probabilities = []
         norms = []
         sum_index = 0
-        for X in X_list:
-            sum_index, Z = self._prob_pattern(X=X, dictionary=new_dict)
-            sum_probs.append(sum_index)
+        for i, key in enumerate(key_list):
+            X = X_list[i]
+            y_values = new_dict.get(key)
+            sum_index, Z = self._prob_pattern(X=X, Y_values=y_values)
+            sum_probabilities.append(sum_index)
             norms.append(Z)
 
-        # CONTINUE HERE --- ---
-
         prob_X = []
-        for i in range(len(sum_probs)):
-            prob_Xi = sum_probs[i] / norms[i]
+        for i in range(len(sum_probabilities)):
+            prob_Xi = sum_probabilities[i] / norms[i]
             prob_X.append(prob_Xi)
 
         # DO THE SAME FOR Y
+        Y_kNNs, Y_list = self._get_Y_knn(DL, k_max)
+
+        sum_probabilities = []
+        norms = []
+        sum_index = 0
+        for i, Y in enumerate(Y_list):
+            y_values = Y_kNNs[i]
+            sum_index, Z = self._prob_pattern(X=X, Y_values=y_values)
+            sum_probabilities.append(sum_index)
+            norms.append(Z)
+
+        prob_Y = []
+        for i in range(len(sum_probabilities)):
+            prob_Yi = sum_probabilities[i] / norms[i]
+            prob_X.append(prob_Yi)
 
         # (5) CALCULATE EVALUATION OF THE SIMILARITY OF X AND Y's DISTRIBUTION OVER PATTERNS
-        simP = []
-        for i in prob_X:
-            simP_part = 1 - jensenshannon(prob_X[i], probY[i])  # TAKES PROBABLY THE WHOLE ARRAY
-            simP.append(simP_part) 
+        simP = 1 - jensenshannon(prob_X, prob_Y)
 
         # (6) CALCULATE SIMILARITY MEASURE AND UTILITY
         sim = []
         for i in simP:
             sim_part = simD[i] * simP[i]
-            sim.append(simP_part)
+            sim.append(sim_part)
 
         utility = sum(sim)
         return utility
@@ -604,6 +615,18 @@ class ACTS:
         norm_Z = sum(pattern_sums)
 
         return pattern_sums, norm_Z
+
+    def _get_Y_knn(self, DL, k_nn):
+        # (1) CALCULATE DISTANCES
+        Y_kNNs_list = []
+        Y_list_use = []
+        for Y in DL:
+            dist_list = [_dis(Y, y) for y in DL]  # PERHAPS MUST CHANGE SO THAT IT DOES NOT CALCULATE Y TO Y
+            knn_idx = np.argpartition(dist_list, k_nn)[:k_nn]
+            Y_kNNs_list.append(DL[knn_idx])
+            Y_list_use.append(Y)
+
+        return Y_kNNs_list, Y_list_use
 
     def get_inst_key(self, Y: np.ndarray):
         """
