@@ -458,10 +458,13 @@ class ACTS:
                 sum_probability += self._calculate_probx(X, pt) * self.patterns.at[pt_key, "l_probas"][l]
             probability_list.append(sum_probability)
 
+        print(probability_list)
+
         # (3) NORMALIZE AND RETURN
         norm_Z = sum(probability_list)
+        print("Norm Z", norm_Z)
         uncertainty = 0
-        for label in probability_list:
+        for label in enumerate(probability_list):
             uncertainty += (probability_list[label] / norm_Z) * np.log(probability_list[label] / norm_Z) * (d1 / d_max)
 
         return uncertainty
@@ -491,7 +494,6 @@ class ACTS:
             simD.append(simD_part)
 
         simD = sum(simD)
-        print("Sim D", simD)
 
         # (3) CALCULATE NN OF Xi THAT ARE IN DL (PERHAPS MAKE INTO A FUNCTION)
         sum_probabilities = []
@@ -505,21 +507,15 @@ class ACTS:
             norms.append(Z)
 
         sum_probabilities = list(itertools.chain(*sum_probabilities))
-        print("Sum probabilities: ", sum_probabilities)
-        print("Norms: ", norms)
 
         prob_X = []
         for i in range(len(sum_probabilities)):
             prob_Xi = sum_probabilities[i] / norms[i]
             prob_X.append(prob_Xi)
 
-        print("Prob X: ", prob_X)
-
         # DO THE SAME FOR Y
         Y_kNNs, Y_list = self._get_Y_knn(DL, k_max)
 
-        print("Y knn:", Y_kNNs)
-        print("Y list:", Y_list)
 
         sum_probabilities = []
         norms = []
@@ -541,16 +537,25 @@ class ACTS:
 
         print("Prob Y", prob_Y)
 
+        if len(prob_X) < len(prob_Y):
+            prob_Y = prob_Y[:len(prob_X)]
+        elif len(prob_X) > len(prob_Y):
+            prob_X = prob_X[:len(prob_Y)]
+        else:
+            pass
+
         # (5) CALCULATE EVALUATION OF THE SIMILARITY OF X AND Y's DISTRIBUTION OVER PATTERNS
         simP = 1 - jensenshannon(prob_X, prob_Y)
 
         # (6) CALCULATE SIMILARITY MEASURE AND UTILITY
-        sim = []
-        for i in simP:
-            sim_part = simD[i] * simP[i]
-            sim.append(sim_part)
+        # sim = []
+        # for i in simP:
+            # sim_part = simD[i] * simP[i]
+            # sim.append(sim_part)
 
-        utility = sum(sim)
+        utility = simD * simP
+
+        # utility = sum(sim)
         return utility
 
     def _calc_rnn(self, DU, DL, k_nn):
