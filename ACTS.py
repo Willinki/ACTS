@@ -240,11 +240,10 @@ class ACTS:
         self._calculate_lambdas()
         self._calculate_multinomial()
 
-        while len(DL) < len(L) / 2:
-            k_max = 5
-            utility = self._calculate_uti(X, DL, k_max)
-            uncertainty = [self._calculate_uncr(DL, x, L, k_max) for x in X]
-            Q_informativeness = sum(utility, uncertainty)
+        k_max = 7
+        utility = self._calculate_uti(X, DL, k_max)
+        uncertainty = [self._calculate_uncr(DL, x, L, k_max) for x in X]
+        Q_informativeness = sum(utility, uncertainty)
         return self.patterns
 
         if not random_tie_break:
@@ -437,10 +436,12 @@ class ACTS:
         """
 
         # (1) CREATE DISTANCE LIST AND MIN AND MAX VALUES
-        distance_list = [_dis(X, y) for y in np.stack(self.instances["ts"])]  # ITERATES ALL ELEMENTS STORES ALL DISTANCES
+        distance_list = [_dis(X, y) for y in
+                         np.stack(self.instances["ts"])]  # ITERATES ALL ELEMENTS STORES ALL DISTANCES
         knn_idx = np.argpartition(distance_list, k_max)[:k_max]  # FINDS THE INDEXES OF THE CLOSEST K-INSTANCES IN DL
-        knn_keys = self.instances.iloc[knn_idx].index            # OBTAINS THE KEYS OF THE KNNs (key meaning the value of self.instances.key for each knn)
-        #knn = DL[knn_idx]  # EXTRACTS THE INSTANCES FROM DL
+        knn_keys = self.instances.iloc[
+            knn_idx].index  # OBTAINS THE KEYS OF THE KNNs (key meaning the value of self.instances.key for each knn)
+        # knn = DL[knn_idx]  # EXTRACTS THE INSTANCES FROM DL
 
         distance_list = np.sort(distance_list)
         distance_list = distance_list[:k_max]
@@ -449,7 +450,7 @@ class ACTS:
 
         # (2) ITERATE OVER ALL POSSIBLE LABELS
         probability_list = []
-        for l in L: # UNIQUE VALUES
+        for l in L:  # UNIQUE VALUES
             sum_probability = 0
             for key in knn_keys:
                 pt_key = self.instances.at[key, "near_pt"]
@@ -621,7 +622,7 @@ class ACTS:
         for Y in DL:
             dist_list = [_dis(Y, y) for y in DL]  # PERHAPS MUST CHANGE SO THAT IT DOES
             # NOT CALCULATE Y TO Y
-            knn_idx = np.argpartition(dist_list, k_nn+1)[1:k_nn+1]
+            knn_idx = np.argpartition(dist_list, k_nn + 1)[1:k_nn + 1]
             Y_kNNs_list.append(DL[knn_idx])
             Y_list_use.append(Y)
 
@@ -632,7 +633,7 @@ class ACTS:
         Given an instance (array), return its key
         """
         idx = np.where([
-            np.array_equal(x, Y) 
+            np.array_equal(x, Y)
             for x in np.stack(self.instances["ts"])
         ])
         return self.instances.iloc[idx].index[0]
