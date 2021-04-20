@@ -229,12 +229,11 @@ class ACTS:
             self.label_set = np.unique(L)
             self._initialize_instances(DL, L, Li)
             self._initialize_patterns()
-        else:
-            self._update_instances(DL, L, Li)
-            self._update_patterns_alt()
-            self._assign_instances()
-            self._assign_patterns()
-            self._drop_empty_patterns()
+        self._update_instances(DL, L, Li)
+        self._update_patterns_alt()
+        self._assign_instances()
+        self._assign_patterns()
+        self._drop_empty_patterns()
 
         # MODELING
         self._calculate_lambdas()
