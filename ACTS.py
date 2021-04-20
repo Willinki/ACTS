@@ -243,7 +243,7 @@ class ACTS:
         k_max = 7
         utility = self._calculate_uti(X, DL, k_max)
         uncertainty = [self._calculate_uncr(DL, x, L, k_max) for x in X]
-        Q_informativeness = sum(utility, uncertainty)
+        Q_informativeness = utility + uncertainty
         return self.patterns
 
         if not random_tie_break:
@@ -450,7 +450,7 @@ class ACTS:
 
         # (2) ITERATE OVER ALL POSSIBLE LABELS
         probability_list = []
-        for l in L:  # UNIQUE VALUES
+        for l in self.label_set:  # UNIQUE VALUES
             sum_probability = 0
             for key in knn_keys:
                 pt_key = self.instances.at[key, "near_pt"]
@@ -464,8 +464,8 @@ class ACTS:
         norm_Z = sum(probability_list)
         print("Norm Z", norm_Z)
         uncertainty = 0
-        for label in enumerate(probability_list):
-            uncertainty += (probability_list[label] / norm_Z) * np.log(probability_list[label] / norm_Z) * (d1 / d_max)
+        for i in range(len(probability_list)):
+            uncertainty += (probability_list[i] / norm_Z) * np.log(probability_list[i] / norm_Z) * (d1 / d_max)
 
         return uncertainty
 
@@ -506,8 +506,6 @@ class ACTS:
             sum_probabilities.append(sum_index)
             norms.append(Z)
 
-        sum_probabilities = list(itertools.chain(*sum_probabilities))
-
         prob_X = []
         for i in range(len(sum_probabilities)):
             prob_Xi = sum_probabilities[i] / norms[i]
@@ -516,26 +514,19 @@ class ACTS:
         # DO THE SAME FOR Y
         Y_kNNs, Y_list = self._get_Y_knn(DL, k_max)
 
-
         sum_probabilities = []
         norms = []
         sum_index = 0
         for i, Y in enumerate(Y_list):
             y_values = Y_kNNs[i]
-            print("Y values", y_values)
             sum_index, Z = self._prob_pattern(X=X, Y_values=y_values)
             sum_probabilities.append(sum_index)
             norms.append(Z)
-
-        sum_probabilities = list(itertools.chain(*sum_probabilities))
-        print("Sum probabilities: ", sum_probabilities)
 
         prob_Y = []
         for i in range(len(sum_probabilities)):
             prob_Yi = sum_probabilities[i] / norms[i]
             prob_Y.append(prob_Yi)
-
-        print("Prob Y", prob_Y)
 
         if len(prob_X) < len(prob_Y):
             prob_Y = prob_Y[:len(prob_X)]
@@ -635,7 +626,7 @@ class ACTS:
         # (3) NORMALIZING CONSTANT
         norm_Z = sum(pattern_sums)
 
-        return pattern_sums, norm_Z
+        return sum(pattern_sums), norm_Z
 
     def _get_Y_knn(self, DL, k_nn):
         # (1) CALCULATE DISTANCES
