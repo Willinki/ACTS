@@ -239,15 +239,13 @@ class ACTS:
         # MODELING
         self._calculate_lambdas()
         self._calculate_multinomial()
-        # QUESTION SELECTION
-        # STEPS:
-        #        compute utility
-        #        compute uncertainty
-        #        if uncertainty = 0, add the series to the labelled set (is it possible?)[maybe leave it as last...]
-        #        calculate Q_informativeness 
-        ##############################################ONLY FOR TESTING
+
+        while len(DL) < len(L) / 2:
+            k_max = 5
+            utility = self._calculate_uti(X, DL, k_max)
+            uncertainty = [self._calculate_uncr(DL, x, L, k_max) for x in X]
+            Q_informativeness = sum(utility, uncertainty)
         return self.patterns
-        ##############################################
 
         if not random_tie_break:
             return _multi_argmax(Q_informativeness, n_instances=n_instances)
@@ -456,7 +454,7 @@ class ACTS:
             for key in knn_keys:
                 pt_key = self.instances.at[key, "near_pt"]
                 pt = self.patterns.at[pt_key, "ts"]
-                sum_probability += self._calculate_probx(X, pt) * self.patterns.at[pt_key, "l_probas
+                sum_probability += self._calculate_probx(X, pt) * self.patterns.at[pt_key, "l_probas"][l]
             probability_list.append(sum_probability)
 
         # (3) NORMALIZE AND RETURN
@@ -621,8 +619,9 @@ class ACTS:
         Y_kNNs_list = []
         Y_list_use = []
         for Y in DL:
-            dist_list = [_dis(Y, y) for y in DL]  # PERHAPS MUST CHANGE SO THAT IT DOES NOT CALCULATE Y TO Y
-            knn_idx = np.argpartition(dist_list, k_nn)[:k_nn]
+            dist_list = [_dis(Y, y) for y in DL]  # PERHAPS MUST CHANGE SO THAT IT DOES
+            # NOT CALCULATE Y TO Y
+            knn_idx = np.argpartition(dist_list, k_nn+1)[1:k_nn+1]
             Y_kNNs_list.append(DL[knn_idx])
             Y_list_use.append(Y)
 
