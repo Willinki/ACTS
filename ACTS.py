@@ -244,7 +244,7 @@ class ACTS:
         utility = self._calculate_uti(X, DL, k_max)
         uncertainty = [self._calculate_uncr(DL, x, L, k_max) for x in X]
         Q_informativeness = utility + uncertainty
-        return self.patterns
+        # return self.patterns
 
         if not random_tie_break:
             return _multi_argmax(Q_informativeness, n_instances=n_instances)
@@ -458,11 +458,8 @@ class ACTS:
                 sum_probability += self._calculate_probx(X, pt) * self.patterns.at[pt_key, "l_probas"][l]
             probability_list.append(sum_probability)
 
-        print(probability_list)
-
         # (3) NORMALIZE AND RETURN
         norm_Z = sum(probability_list)
-        print("Norm Z", norm_Z)
         uncertainty = 0
         for i in range(len(probability_list)):
             uncertainty += (probability_list[i] / norm_Z) * np.log(probability_list[i] / norm_Z) * (d1 / d_max)
