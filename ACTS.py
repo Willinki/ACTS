@@ -11,6 +11,7 @@ import math
 import warnings
 from sklearn.base import BaseEstimator
 from scipy.spatial.distance import jensenshannon
+import itertools
 
 warnings.filterwarnings("ignore", category=np.VisibleDeprecationWarning)
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -80,9 +81,9 @@ def k(X: np.ndarray) -> int:
 @njit(parallel=True)
 def _dis(X: np.ndarray, pt: np.ndarray) -> float:
     """Given instance and pattern, calculates Dis(X, pt), sliding window.
-    Used in _calculate_probx. 
+    Used in _calculate_probx.
     Faster
-    
+
     Args
     ----
         - X : (array-like) instance
@@ -103,9 +104,9 @@ def _dis(X: np.ndarray, pt: np.ndarray) -> float:
 @njit(parallel=True)
 def _dis_rescaled(X: np.ndarray, pt: np.ndarray) -> float:
     """Given instance and pattern, calculates Dis(X, pt), sliding window.
-    Used in _calculate_probx. 
+    Used in _calculate_probx.
     Rescale the data around mean.
-    
+
     Args
     ----
         - X : (array-like) instance
@@ -126,8 +127,8 @@ def _dis_rescaled(X: np.ndarray, pt: np.ndarray) -> float:
 
 def _dis_o(X: np.ndarray, pt: np.ndarray) -> float:
     """Given instance and pattern, calculates Dis(X, pt), sliding window.
-    Used in _calculate_probx. 
-    
+    Used in _calculate_probx.
+
     Args
     ----
         - X : (array-like) instance
@@ -147,8 +148,8 @@ def _dis_o(X: np.ndarray, pt: np.ndarray) -> float:
 
 def _dis_dtw(X: np.ndarray, pt: np.ndarray) -> float:
     """Given instance and pattern, calculates Dis(X, pt), FASTDTW.
-    Used in _calculate_probx. 
-    
+    Used in _calculate_probx.
+
     Args
     ----
         - X : (array-like) instance
@@ -168,19 +169,19 @@ def _dis_dtw(X: np.ndarray, pt: np.ndarray) -> float:
 
 
 class ACTS:
-    """Wrapper class for ACTS query strategy. 
-    
+    """Wrapper class for ACTS query strategy.
+
     Properties
     ----------
         - patterns: pd.DataFrame
             cols : key, ts, inst_keys, idx, labels, l_probas, lambda
-            
+
         - instances : pd.Dataframe
             cols : key, ts, label, near_pt
-        
+
         - label_set : np.ndarray
             Contains the list of possible labels
-            
+
         - tree : sklearn.classifier
             DecisionTree used to assign a pattern to each
             labelled instance
@@ -206,7 +207,7 @@ class ACTS:
                  random_tie_break: bool = False,
                  **uncertainty_measure_kwargs) -> np.ndarray:
         """Sampling based on the measures defined by ACTS.
-        
+
         Args
         ----
             - X : The pool of samples to query from.
@@ -219,7 +220,7 @@ class ACTS:
                 can be used to break the tie when the highest utility score is not unique.
             - **uncertainty_measure_kwargs: Keyword arguments to be passed for the uncertainty
                 measure function.
-                
+
         Returns
         -------
             The indices of the instances from X chosen to be labelled;
@@ -252,7 +253,7 @@ class ACTS:
 
     def _initialize_instances(self, DL, L, Li) -> None:
         """For each element in DL, L, Li add instance
-        
+
         Args : see __call__
         """
         self.instances = pd.DataFrame({
@@ -280,7 +281,7 @@ class ACTS:
         )
 
     def _calculate_lambdas(self):
-        """For each patterm calculates value of lambda. 
+        """For each patterm calculates value of lambda.
         """
         for index, row in self.patterns.iterrows():
             instances = np.stack(
@@ -305,10 +306,10 @@ class ACTS:
 
     def _assign_patterns(self) -> None:
         """For each pattern, update inst_keys, labels.
-        
-        - self.patterns.inst_keys : np.array 
+
+        - self.patterns.inst_keys : np.array
             Keys of instances that have the pattern as near_pt
-        - self.patterns.labels : np.array 
+        - self.patterns.labels : np.array
             Keys of instances that have the pattern as near_pt
         """
         for index, _ in self.patterns.iterrows():
@@ -355,7 +356,7 @@ class ACTS:
     def _update_instances(self, DL, L, Li) -> None:
         """For each element in DL, check if exists in instances
             if not, add to self.instances
-        
+
         Args : see __call__
         """
         new_keys = np.setdiff1d(Li, self.instances.index, assume_unique=True)
@@ -373,7 +374,7 @@ class ACTS:
 
     def _calculate_probx(self, X, pt) -> None:
         """Calculates the value of P(X | pt)
-        
+
         Args
         ----
             - X : (array-like) instance
@@ -489,7 +490,8 @@ class ACTS:
             simD_part = self._sim_D(X=X, Y_values=y_values)
             simD.append(simD_part)
 
-        # PERHAPS ONE SHOULD SUM EACH SIMD PART BEFORE PROCEEDING
+        simD = sum(simD)
+        print("Sim D", simD)
 
         # (3) CALCULATE NN OF Xi THAT ARE IN DL (PERHAPS MAKE INTO A FUNCTION)
         sum_probabilities = []
@@ -502,31 +504,42 @@ class ACTS:
             sum_probabilities.append(sum_index)
             norms.append(Z)
 
-        print(sum_probabilities)
-        print(norms)
-        quit()
+        sum_probabilities = list(itertools.chain(*sum_probabilities))
+        print("Sum probabilities: ", sum_probabilities)
+        print("Norms: ", norms)
 
         prob_X = []
         for i in range(len(sum_probabilities)):
-            prob_Xi = sum(sum_probabilities[i]) / norms[i]
+            prob_Xi = sum_probabilities[i] / norms[i]
             prob_X.append(prob_Xi)
+
+        print("Prob X: ", prob_X)
 
         # DO THE SAME FOR Y
         Y_kNNs, Y_list = self._get_Y_knn(DL, k_max)
+
+        print("Y knn:", Y_kNNs)
+        print("Y list:", Y_list)
 
         sum_probabilities = []
         norms = []
         sum_index = 0
         for i, Y in enumerate(Y_list):
             y_values = Y_kNNs[i]
+            print("Y values", y_values)
             sum_index, Z = self._prob_pattern(X=X, Y_values=y_values)
             sum_probabilities.append(sum_index)
             norms.append(Z)
 
+        sum_probabilities = list(itertools.chain(*sum_probabilities))
+        print("Sum probabilities: ", sum_probabilities)
+
         prob_Y = []
         for i in range(len(sum_probabilities)):
-            prob_Yi = sum(sum_probabilities[i]) / norms[i]
-            prob_X.append(prob_Yi)
+            prob_Yi = sum_probabilities[i] / norms[i]
+            prob_Y.append(prob_Yi)
+
+        print("Prob Y", prob_Y)
 
         # (5) CALCULATE EVALUATION OF THE SIMILARITY OF X AND Y's DISTRIBUTION OVER PATTERNS
         simP = 1 - jensenshannon(prob_X, prob_Y)
@@ -584,7 +597,7 @@ class ACTS:
         dist_list = [_dis(X, Y) for Y in Y_values]
         max_dist = max(dist_list)
         simD = [(1 - (dist / max_dist)) for dist in dist_list]
-        return simD
+        return sum(simD)
 
     def _prob_pattern(self, X, Y_values):
         """
@@ -602,7 +615,6 @@ class ACTS:
         # (2) CALCULATE SUM FOR EACH PATTERN
         pattern_sums = []
         for pt in self.patterns["ts"].to_numpy():
-            print("Pattern: ", pt)
             sum_prob = 0
             for Y in Y_values:
                 I_binary = 0
@@ -610,13 +622,9 @@ class ACTS:
                 pt_key = self.instances.at[inst_key, "near_pt"]
                 # CORRECT
                 Y_pt = self.patterns.at[pt_key, "ts"]
-                print("X: ", X)
-                print("Y pattern", Y_pt)
                 if np.array_equal(Y_pt, pt):
                     I_binary = 1
                 sum_prob += self._calculate_probx(X, Y_pt) * I_binary
-                print(sum_prob)
-                quit()
             pattern_sums.append(sum_prob)
 
         # (3) NORMALIZING CONSTANT
