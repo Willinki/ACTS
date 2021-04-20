@@ -384,7 +384,7 @@ class ACTS:
         return math.exp(-lam * _dis(X, pt))
 
     def run_tree(self, X: np.ndarray):
-        """Given the transformed instances in X, returns the pattern keys 
+        """Given the transformed instances in X, returns the pattern keys
         they are assigned to.
         """
         estimator = self.tree
@@ -392,7 +392,7 @@ class ACTS:
         feature = estimator.tree_.feature
         node_indicator = estimator.decision_path(X)
         leave_id = estimator.apply(X)
-        # this will contain, for each instance, the feature used 
+        # this will contain, for each instance, the feature used
         # by transformer in the last decision node
         patterns = np.zeros(shape=(X.shape[0], 2), dtype=int)
         pt_keys = []
@@ -410,7 +410,7 @@ class ACTS:
 
     def _calculate_multinomial(self) -> None:
         """For each pattern, given labels, calculates l_probas
-        
+
         Performs multinomial MLE:
             p_i = \sum_n l_n / N
             - l_i : 1 if n = i, 0 otherwise
@@ -490,6 +490,8 @@ class ACTS:
             simD_part = self._sim_D(X=X, Y_values=y_values)
             simD.append(simD_part)
 
+        # PERHAPS ONE SHOULD SUM EACH SIMD PART BEFORE PROCEEDING
+
         # (3) CALCULATE NN OF Xi THAT ARE IN DL (PERHAPS MAKE INTO A FUNCTION)
         sum_probabilities = []
         norms = []
@@ -501,9 +503,13 @@ class ACTS:
             sum_probabilities.append(sum_index)
             norms.append(Z)
 
+        print(sum_probabilities)
+        print(norms)
+        quit()
+
         prob_X = []
         for i in range(len(sum_probabilities)):
-            prob_Xi = sum_probabilities[i] / norms[i]
+            prob_Xi = sum(sum_probabilities[i]) / norms[i]
             prob_X.append(prob_Xi)
 
         # DO THE SAME FOR Y
@@ -520,7 +526,7 @@ class ACTS:
 
         prob_Y = []
         for i in range(len(sum_probabilities)):
-            prob_Yi = sum_probabilities[i] / norms[i]
+            prob_Yi = sum(sum_probabilities[i]) / norms[i]
             prob_X.append(prob_Yi)
 
         # (5) CALCULATE EVALUATION OF THE SIMILARITY OF X AND Y's DISTRIBUTION OVER PATTERNS
@@ -556,9 +562,9 @@ class ACTS:
                 rnn_idx = np.argpartition(dist_list, k_nn)[:k_nn]  # FINDS THE INDEXES OF THE CLOSEST K-INSTANCES IN DU
                 if X in DU[rnn_idx]:
                     rnn.append(Y)
-            key = i
-            X_list.append(X)
-            dictionary[key] = rnn
+                    key = i
+                    X_list.append(X)
+                    dictionary[key] = rnn
 
         return dictionary, X_list
 
@@ -579,7 +585,6 @@ class ACTS:
         dist_list = [_dis(X, Y) for Y in Y_values]
         max_dist = max(dist_list)
         simD = [(1 - (dist / max_dist)) for dist in dist_list]
-
         return simD
 
     def _prob_pattern(self, X, Y_values):
@@ -598,6 +603,7 @@ class ACTS:
         # (2) CALCULATE SUM FOR EACH PATTERN
         pattern_sums = []
         for pt in self.patterns["ts"].to_numpy():
+            print("Pattern: ", pt)
             sum_prob = 0
             for Y in Y_values:
                 I_binary = 0
@@ -605,9 +611,13 @@ class ACTS:
                 pt_key = self.instances.at[inst_key, "near_pt"]
                 # CORRECT
                 Y_pt = self.patterns.at[pt_key, "ts"]
-                if Y_pt == pt:
+                print("X: ", X)
+                print("Y pattern", Y_pt)
+                if np.array_equal(Y_pt, pt):
                     I_binary = 1
                 sum_prob += self._calculate_probx(X, Y_pt) * I_binary
+                print(sum_prob)
+                quit()
             pattern_sums.append(sum_prob)
 
         # (3) NORMALIZING CONSTANT
