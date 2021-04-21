@@ -241,11 +241,12 @@ class ACTS:
         self._calculate_lambdas()
         self._calculate_multinomial()
 
+        start_time = time.time()
         k_max = 7
         utility = self._calculate_uti(X, DL, k_max)
+        start_time = time.time()
         uncertainty = [self._calculate_uncr(DL, x, L, k_max) for x in X]
         Q_informativeness = utility + uncertainty
-        # return self.patterns
 
         if not random_tie_break:
             return _multi_argmax(Q_informativeness, n_instances=n_instances)
@@ -517,7 +518,7 @@ class ACTS:
         sum_index = 0
         for i, Y in enumerate(Y_list):
             y_values = Y_kNNs[i]
-            sum_index, Z = self._prob_pattern(X=X, Y_values=y_values)
+            sum_index, Z = self._prob_pattern(X=Y, Y_values=y_values)
             sum_probabilities.append(sum_index)
             norms.append(Z)
 
@@ -565,6 +566,8 @@ class ACTS:
             rnn = []
             for Y in DL:
                 dist_list = [_dis(xi, Y) for xi in DU]
+                if k_nn >= len(dist_list):
+                    k_nn = len(dist_list) - 1
                 rnn_idx = np.argpartition(dist_list, k_nn)[:k_nn]  # FINDS THE INDEXES OF THE CLOSEST K-INSTANCES IN DU
                 if X in DU[rnn_idx]:
                     rnn.append(Y)
