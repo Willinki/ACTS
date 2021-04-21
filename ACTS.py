@@ -12,6 +12,7 @@ import warnings
 from sklearn.base import BaseEstimator
 from scipy.spatial.distance import jensenshannon
 import itertools
+import time
 
 warnings.filterwarnings("ignore", category=np.VisibleDeprecationWarning)
 warnings.simplefilter(action='ignore', category=FutureWarning)
