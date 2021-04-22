@@ -189,6 +189,7 @@ class ACTS:
     """
 
     def __init__(self):
+        self.__name__ = "ACTS"
         self.patterns = None
         self.instances = None
         self.lam = None
@@ -242,7 +243,7 @@ class ACTS:
         self._calculate_multinomial()
 
         start_time = time.time()
-        k_max = 7
+        k_max = 16
         utility = self._calculate_uti(X, DL, k_max)
         start_time = time.time()
         uncertainty = [self._calculate_uncr(DL, x, L, k_max) for x in X]
@@ -440,6 +441,8 @@ class ACTS:
         # (1) CREATE DISTANCE LIST AND MIN AND MAX VALUES
         distance_list = [_dis(X, y) for y in
                          np.stack(self.instances["ts"])]  # ITERATES ALL ELEMENTS STORES ALL DISTANCES
+        if k_max >= len(distance_list):
+            k_max = len(distance_list) - 1
         knn_idx = np.argpartition(distance_list, k_max)[:k_max]  # FINDS THE INDEXES OF THE CLOSEST K-INSTANCES IN DL
         knn_keys = self.instances.iloc[
             knn_idx].index  # OBTAINS THE KEYS OF THE KNNs (key meaning the value of self.instances.key for each knn)
@@ -457,7 +460,7 @@ class ACTS:
             for key in knn_keys:
                 pt_key = self.instances.at[key, "near_pt"]
                 pt = self.patterns.at[pt_key, "ts"]
-                sum_probability += self._calculate_probx(X, pt) * self.patterns.at[pt_key, "l_probas"][l]
+                sum_probability += self._calculate_probx(X, pt) * self.patterns.at[pt_key, "l_probas"][l-1]
             probability_list.append(sum_probability)
 
         # (3) NORMALIZE AND RETURN
@@ -636,6 +639,8 @@ class ACTS:
         for Y in DL:
             dist_list = [_dis(Y, y) for y in DL]  # PERHAPS MUST CHANGE SO THAT IT DOES
             # NOT CALCULATE Y TO Y
+            if k_nn >= len(dist_list):
+                k_nn = len(dist_list) - 2
             knn_idx = np.argpartition(dist_list, k_nn + 1)[1:k_nn + 1]
             Y_kNNs_list.append(DL[knn_idx])
             Y_list_use.append(Y)
