@@ -39,8 +39,8 @@ def _shuffled_argmax(values: np.ndarray, n_instances: int = 1) -> np.ndarray:
         The indices of the n_instances largest values.
     """
     if n_instances <= values.shape[0]:
-        print(f"Too few instances, returning all remaining
-              unlabelled data")
+        print("Too few instances, returning all remaining"
+              "unlabelled data")
         return values
 
     # shuffling indices and corresponding values
