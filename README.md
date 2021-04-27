@@ -25,7 +25,7 @@ Then, create an instance of the ACTS class as:
 acts = ACTS()
 ```
 
-The query strategy itself is in the `___call()___` function, so:
+The query strategy itself is in the `___call___` function, so:
 ```{python}
 query_idxs = acts(n_instances, X, DL, L, Li)
 ```
