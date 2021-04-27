@@ -227,7 +227,8 @@ class ACTS:
 
         Returns
         -------
-            The indices of the instances from X chosen to be labelled;
+            query_idxs = np.ndarray of shape (n_instances, )
+                The indices of the instances from X chosen to be labelled;
         """
         # MAINTAINING PATTERNS
         if self.patterns is None:
@@ -243,12 +244,8 @@ class ACTS:
         # MODELING
         self._calculate_lambdas()
         self._calculate_multinomial()
-
-        start_time = time.time()
-        k_max = 16
-        utility = self._calculate_uti(X, DL, k_max)
-        start_time = time.time()
-        uncertainty = [self._calculate_uncr(DL, x, L, k_max) for x in X]
+        utility = self._calculate_uti(X, DL, 16)
+        uncertainty = [self._calculate_uncr(DL, x, L, 16) for x in X]
         Q_informativeness = utility + uncertainty
 
         if not random_tie_break:
@@ -325,6 +322,8 @@ class ACTS:
             self.patterns.at[index, "labels"] = nn_instances["label"].to_numpy()
 
     def _update_patterns_alt(self):
+        """Create new patterns from the instances
+        """
         instances = np.stack(self.instances["ts"])
         labels = self.instances["label"].to_numpy()
 
@@ -347,11 +346,11 @@ class ACTS:
                 "labels": [np.array([]) for _ in shapelets],
                 "l_probas": [np.array([]) for _ in shapelets]
             }).drop_duplicates('key')
-                .set_index('key')
+              .set_index('key')
         )
 
     def _drop_empty_patterns(self) -> None:
-        """Pretty self explanatory
+        """Pretty self-explanatory
         """
         aux_df = pd.DataFrame(self.patterns["inst_keys"])
         aux_df["empty_bool"] = aux_df["inst_keys"].apply(lambda x: True if len(x) == 0 else False)
