@@ -217,7 +217,6 @@ class ACTS:
         ----
             - X : The pool of samples to query from.
             - DL: The instances of labelled data
-                Must contain at least an instance for each label
             - L: The labels of DL
             - Li: Indices of labelled instances
             - n_instances: Number of samples to be returned.
