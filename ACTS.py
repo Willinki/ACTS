@@ -2,17 +2,11 @@
 Implementation of the ACTS algorithm as a query strategy for the va_builder framework.
 For any additional information see documentation.
 """
-from llvmlite.ir.values import Value
-from numba.npyufunc import parallel
 import pandas as pd
 import numpy as np
-import random
 import math
 import warnings
-from sklearn.base import BaseEstimator
 from scipy.spatial.distance import jensenshannon
-import itertools
-import time
 
 warnings.filterwarnings("ignore", category=np.VisibleDeprecationWarning)
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -186,6 +180,9 @@ class ACTS:
         - label_set : np.ndarray
             Contains the list of possible labels
 
+        - transformer : pyts.transformation.ShapeletTransform 
+            Used to compute pattern candidates. 
+
         - tree : sklearn.classifier
             DecisionTree used to assign a pattern to each
             labelled instance
@@ -195,7 +192,6 @@ class ACTS:
         self.__name__ = "ACTS"
         self.patterns = None
         self.instances = None
-        self.lam = None
         self.label_set = None
         self.transformer = ShapeletTransform(window_sizes=[0.15, 0.30, 0.05])
         self.tree = DecisionTreeClassifier(
