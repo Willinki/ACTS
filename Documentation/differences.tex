@@ -2,10 +2,23 @@
 We can summarize the differences between this implementation of ACTS and 
 the one proposed in the paper as:
 \begin{itemize}
+    \item Loop, scope of the code
     \item Automatic addition of certain instances to the labelled data is not
     present here
     \item Pattern creation and assigning
 \end{itemize}
+
+\subsection{Loop, scope of the code}
+For this first aspect, we would like to remark that this implementation of ACTS is 
+built to be used as a query strategy inside va builder.
+
+The code in the paper describes a full active learning loop. Starting from a few labelled instances, 
+calculate uncertainty and utility, then query, etc.. Then repeat until you have enough labels.
+
+This code does not deal with the active learning loop, but only performs a query given a certain 
+set of labelled and unlabelled data. 
+
+So given DL, X, L, Li as in documentation, returns the most useful instances.
 
 \subsection{Automatic addition of certain instances}
 In the paper it is said that if the uncertainty of an instance is equal to 0, then 
@@ -78,5 +91,7 @@ That is, we don't perform the sequence of operations described in the first list
     \item Look for new patterns using all the available data 
 \end{itemize}
 
+When training the decision tree, not all pattern candidates are used. Some of them might not be 
+used by the tree. They are removed in "drop\_empty\_pattern".
 
 
